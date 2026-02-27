@@ -22,6 +22,13 @@ public class NotificationQueue : BaseEntity, IMustHaveProject
     public NotificationChannel Channel { get; set; }
 
     /// <summary>
+    /// Eğer e-postaya eklenecek bir dosya varsa (Örn: Fatura PDF'i), 
+    /// sunucudaki göreceli (relative) dosya yolunu tutar.
+    /// Örn: "/uploads/invoices/INV-2026-ABC.pdf"
+    /// </summary>
+    public string? AttachmentPath { get; set; }
+
+    /// <summary>
     /// Konu başlığı (Email Subject).
     /// </summary>
     public string Subject { get; set; } = string.Empty;

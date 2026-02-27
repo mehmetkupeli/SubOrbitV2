@@ -1,4 +1,5 @@
 ﻿using SubOrbitV2.Domain.Entities.Billing;
+using SubOrbitV2.Domain.Entities.Organization;
 
 namespace SubOrbitV2.Application.Common.Interfaces;
 
@@ -13,5 +14,5 @@ public interface IPdfService
     /// </summary>
     /// <param name="invoice">Dolu fatura nesnesi.</param>
     /// <returns>PDF dosyasının byte dizisi.</returns>
-    Task<byte[]> GenerateInvoicePdfAsync(Invoice invoice);
+    Task<byte[]> GenerateInvoicePdfAsync(Invoice invoice, Project project);
 }

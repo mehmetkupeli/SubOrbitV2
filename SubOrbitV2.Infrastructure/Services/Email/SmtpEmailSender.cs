@@ -1,5 +1,6 @@
 ﻿using MailKit.Net.Smtp;
 using MailKit.Security;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 using MimeKit;
 using SubOrbitV2.Application.Common.Interfaces;
@@ -10,14 +11,14 @@ namespace SubOrbitV2.Infrastructure.Services.Email;
 public class SmtpEmailSender : IEmailSender
 {
     private readonly ILogger<SmtpEmailSender> _logger;
-
-    // Artık IOptions<MailSettings> inject etmiyoruz!
-    public SmtpEmailSender(ILogger<SmtpEmailSender> logger)
+    private readonly IWebHostEnvironment _env;
+    public SmtpEmailSender(ILogger<SmtpEmailSender> logger,IWebHostEnvironment env)
     {
         _logger = logger;
+        _env = env;
     }
 
-    public async Task SendEmailAsync(SmtpConfiguration config, string to, string subject, string htmlBody)
+    public async Task SendEmailAsync(SmtpConfiguration config, string to, string subject, string htmlBody, string? attachmentPath = null)
     {
         try
         {
@@ -29,6 +30,14 @@ public class SmtpEmailSender : IEmailSender
             email.Subject = subject;
 
             var builder = new BodyBuilder { HtmlBody = htmlBody };
+            if (!string.IsNullOrEmpty(attachmentPath))
+            {
+                var fullPath = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, attachmentPath.TrimStart('/'));
+                if (File.Exists(fullPath))
+                {
+                    builder.Attachments.Add(fullPath);
+                }
+            }
             email.Body = builder.ToMessageBody();
 
             using var smtp = new SmtpClient();

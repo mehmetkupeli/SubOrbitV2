@@ -11,5 +11,5 @@ public interface IEmailSender
     /// <param name="to">Alıcı adresi.</param>
     /// <param name="subject">Konu.</param>
     /// <param name="htmlBody">İçerik.</param>
-    Task SendEmailAsync(SmtpConfiguration config, string to, string subject, string htmlBody);
+    Task SendEmailAsync(SmtpConfiguration config, string to, string subject, string htmlBody, string? attachmentPath = null);
 }

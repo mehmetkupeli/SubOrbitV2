@@ -3,6 +3,7 @@ using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Domain.Entities.Billing;
+using SubOrbitV2.Domain.Entities.Organization;
 
 namespace SubOrbitV2.Infrastructure.Services.Pdf;
 
@@ -14,7 +15,7 @@ public class QuestPdfService : IPdfService
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
-    public Task<byte[]> GenerateInvoicePdfAsync(Invoice invoice)
+    public Task<byte[]> GenerateInvoicePdfAsync(Invoice invoice, Project project)
     {
         var document = Document.Create(container =>
         {
@@ -25,7 +26,7 @@ public class QuestPdfService : IPdfService
                 page.PageColor(Colors.White);
                 page.DefaultTextStyle(x => x.FontSize(10).FontFamily(Fonts.Arial));
 
-                page.Header().Element(handler => ComposeHeader(handler, invoice));
+                page.Header().Element(handler => ComposeHeader(handler, invoice,project));
                 page.Content().Element(handler => ComposeContent(handler, invoice));
                 page.Footer().Element(ComposeFooter);
             });
@@ -36,7 +37,7 @@ public class QuestPdfService : IPdfService
 
     #region Design Components
 
-    private void ComposeHeader(IContainer container, Invoice invoice)
+    private void ComposeHeader(IContainer container, Invoice invoice, Project project)
     {
         var titleStyle = TextStyle.Default.FontSize(20).SemiBold().FontColor(Colors.Blue.Medium);
 
@@ -45,6 +46,7 @@ public class QuestPdfService : IPdfService
             // Sol: Fatura Bilgileri
             row.RelativeItem().Column(column =>
             {
+                column.Item().Text(project.Name).FontSize(24).Bold().FontColor(Colors.Grey.Darken3);
                 column.Item().Text($"FATURA #{invoice.Number}").Style(titleStyle);
 
                 column.Item().Text(text =>

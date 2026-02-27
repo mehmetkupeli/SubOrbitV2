@@ -74,4 +74,17 @@ public class LocalFileService : IFileService
         var fullPath = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, filePath.TrimStart('/'));
         if (File.Exists(fullPath)) File.Delete(fullPath);
     }
+
+    public async Task<string> SaveFileAsync(byte[] content, string fileName, string folderName)
+    {
+        if (content == null || content.Length == 0) return string.Empty;
+
+        var uploadPath = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "uploads", folderName);
+        if (!Directory.Exists(uploadPath)) Directory.CreateDirectory(uploadPath);
+
+        var filePath = Path.Combine(uploadPath, fileName);
+        await File.WriteAllBytesAsync(filePath, content);
+
+        return $"/uploads/{folderName}/{fileName}";
+    }
 }
