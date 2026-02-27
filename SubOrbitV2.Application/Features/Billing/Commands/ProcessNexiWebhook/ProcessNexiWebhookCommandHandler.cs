@@ -3,10 +3,10 @@ using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Application.Common.Models;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
-using SubOrbitV2.Domain.Entities.Catalog;
 using SubOrbitV2.Domain.Entities.Integration;
 using SubOrbitV2.Domain.Entities.Organization;
 using SubOrbitV2.Domain.Enums;
+using SubOrbitV2.Domain.Specifications.Billing;
 
 namespace SubOrbitV2.Application.Features.Billing.Commands.ProcessNexiWebhook;
 
@@ -26,7 +26,6 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
         #region 1. Güvenlik ve Doğrulama
         var project = await _unitOfWork.Repository<Project>().GetByIdAsync(request.ProjectId);
         if (project == null) return Result<bool>.Failure("Proje bulunamadı.");
-
         #endregion
 
         #region 2. Payload Analizi (Subscription ID)
@@ -48,12 +47,15 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
         }
         #endregion
 
-        #region 4. Gerekli Entity'leri Toplama
+        #region 4. Gerekli Entity'leri Toplama (Faturayı Yakalama)
         var payer = await _unitOfWork.Repository<Payer>().GetByIdAsync(subscription.PayerId);
-        var price = await _unitOfWork.Repository<Price>().GetByIdAsync(subscription.PriceId);
 
-        if (payer == null || price == null)
-            return Result<bool>.Failure("Aboneliğe bağlı Payer veya Price bulunamadı.");
+        // Yeni Specification'ı kullanarak bu aboneliğe ait açık faturayı buluyoruz.
+        var invoiceSpec = new InvoiceBySubscriptionIdSpecification(request.ProjectId, subscription.Id);
+        var invoice = await _unitOfWork.Repository<Invoice>().GetEntityWithSpec(invoiceSpec);
+
+        if (payer == null || invoice == null)
+            return Result<bool>.Failure("Aboneliğe bağlı Payer veya açık durumdaki Taslak Fatura bulunamadı.");
         #endregion
 
         try
@@ -68,61 +70,46 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
             payer.Status = PayerStatus.Active;
             _unitOfWork.Repository<Payer>().Update(payer);
 
-            // İşlem 3: Fatura (Invoice) Oluşturma
-            var invoice = new Invoice
-            {
-                ProjectId = request.ProjectId,
-                PayerId = payer.Id,
-                SubscriptionId = subscription.Id,
-                Amount = price.Amount, // Gerçek senaryoda indirimli net tutarı buraya atacağız
-                Currency = price.Currency,
-                Status = InvoiceStatus.Paid, // Nexi'den para geldiği için anında Paid
-                BillingReason = InvoiceBillingReason.SubscriptionCreate,
-                IssueDate = DateTime.UtcNow,
-                DueDate = DateTime.UtcNow,
-                PaidAt = DateTime.UtcNow
-            };
-            await _unitOfWork.Repository<Invoice>().AddAsync(invoice);
+            // İşlem 3: Mevcut Taslak Faturayı (Invoice) Tahsil Edildi Olarak İşaretleme
+            invoice.Status = InvoiceStatus.Paid;
+            invoice.PaidAt = DateTime.UtcNow;
+            invoice.AmountPaid = invoice.TotalAmount;
+            invoice.AmountRemaining = 0;
+            invoice.NexiTransactionId = request.SubId; // Referans kodunu setliyoruz
+            _unitOfWork.Repository<Invoice>().Update(invoice);
 
-            // İşlem 4: Fatura Kalemi (InvoiceLine)
-            var invoiceLine = new InvoiceLine
-            {
-                InvoiceId = invoice.Id,
-                Description = $"{price.Name} - Abonelik Başlangıç Ücreti",
-                Amount = price.Amount,
-                Quantity = 1
-            };
-            await _unitOfWork.Repository<InvoiceLine>().AddAsync(invoiceLine);
 
-            // İşlem 5: Cüzdan Hareketi (WalletTransaction) - Kasaya Para Girdi!
+            // İşlem 4: Cüzdan Hareketi (WalletTransaction) - Kasaya Para Girdi!
+            // Faturadaki tahsil edilen net tutarı (TotalAmount) kullanıyoruz
             var walletTransaction = new WalletTransaction
             {
                 ProjectId = request.ProjectId,
                 PayerId = payer.Id,
-                Amount = price.Amount,
-                Currency = price.Currency,
+                SubscriptionItemId = subscription.Id, // Hangi alt abonelikten geldiğini de bilelim
+                Amount = invoice.TotalAmount,
+                Currency = invoice.Currency,
                 Type = WalletTransactionType.Deposit,
-                Description = $"Nexi ödemesi alındı. (Ref: {request.SubId})",
+                Description = $"Nexi ödemesi alındı. Fatura: #{invoice.Number} (Ref: {request.SubId})",
+                BalanceAfter = payer.VirtualBalance // İlk işlem olduğu için bakiye değişimi sıfıra-sıfır, bu alan audit içindir.
             };
             await _unitOfWork.Repository<WalletTransaction>().AddAsync(walletTransaction);
 
-            // İşlem 6: Aktivite Logu
+            // İşlem 5: Aktivite Logu
             var activityLog = new SubscriptionActivityLog
             {
                 SubscriptionId = subscription.Id,
                 Action = "Payment.Success",
-                Description = "Nexi üzerinden ödeme başarıyla alındı. Abonelik ve fatura işlemleri tamamlandı.",
+                Description = $"Nexi üzerinden ödeme başarıyla alındı. #{invoice.Number} numaralı fatura 'Ödendi' olarak işaretlendi.",
                 CreatedAt = DateTime.UtcNow
             };
             await _unitOfWork.Repository<SubscriptionActivityLog>().AddAsync(activityLog);
 
-            // İşlem 7: Outbound Webhook (X Muhasebe'ye Haber Verme - Faz 4 İçin)
-            // Bu tabloya kaydı atıyoruz, Hangfire veya Background Service arkada bunu görüp X Muhasebe'ye fırlatacak.
+            // İşlem 6: Outbound Webhook (Müşteriye/Muhasebeye Haber Verme)
             var webhookEvent = new WebhookEvent
             {
                 ProjectId = request.ProjectId,
                 EventType = "subscription.activated",
-                Payload = $"{{\"ExternalId\": \"{payer.ExternalId}\", \"SubscriptionId\": \"{subscription.Id}\"}}",
+                Payload = $"{{\"ExternalId\": \"{payer.ExternalId}\", \"SubscriptionId\": \"{subscription.Id}\", \"InvoiceId\": \"{invoice.Id}\"}}",
                 Status = WebhookEventStatus.Pending,
                 CreatedAt = DateTime.UtcNow
             };
@@ -137,8 +124,6 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
         }
         catch (Exception)
         {
-            // DB Transaction hata verirse EF Core otomatik Rollback yapar, 
-            // Biz sadece Nexi'ye 500 hatası dönmek yerine mantıklı bir false dönüyoruz.
             return Result<bool>.Failure("Webhook işlenirken sistem içi bir hata oluştu.");
         }
     }

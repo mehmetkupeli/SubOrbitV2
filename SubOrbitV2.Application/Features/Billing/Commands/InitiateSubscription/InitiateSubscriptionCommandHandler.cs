@@ -35,9 +35,9 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
     {
         var projectId = _projectContext.ProjectId;
         var currentProject = _projectContext.CurrentProject;
+
         try
         {
-
             #region 1. Price ve Coupon Validasyonu
             var price = await _unitOfWork.Repository<Price>().GetByIdAsync(request.PriceId);
             if (price == null || price.ProjectId != projectId || !price.IsActive)
@@ -112,6 +112,7 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
                 ActiveCouponId = coupon?.Id,
                 CurrentPeriodEnd = pricingResult.NextBillingDate,
                 ExternalId = request.ExternalId,
+                Label = payer.Name,
             };
             await _unitOfWork.Repository<Subscription>().AddAsync(subscription);
             #endregion
@@ -130,13 +131,68 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
             }
             #endregion
 
-            #region 6. Activity Log Kaydı
+            #region 6. Fatura (Invoice) ve Satır (InvoiceLine) Draft Kaydı
+            // Benzersiz bir fatura numarası üretiyoruz (Örn: INV-20260226-ABCDEF)
+            var invoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString().Substring(0, 6).ToUpper()}";
+
+            var invoice = new Invoice
+            {
+                ProjectId = projectId,
+                PayerId = payer.Id,
+                Number = invoiceNumber,
+                BillingReason = InvoiceBillingReason.Manual,
+                // Snapshot alanları dolduruluyor
+                CustomerName = payer.Name,
+                CustomerEmail = payer.Email,
+                CustomerTaxOffice = payer.TaxOffice,
+                CustomerTaxNumber = payer.TaxNumber,
+                CustomerAddress = payer.BillingAddress,
+                CustomerCity = payer.City,
+                CustomerCountry = payer.Country,
+                // Tarihler
+                PeriodStart = DateTime.UtcNow,
+                PeriodEnd = pricingResult.NextBillingDate,
+                DueDate = DateTime.UtcNow, 
+                // Finansallar
+                Currency = price.Currency,
+                Subtotal = pricingResult.ProratedAmount,
+                TotalDiscount = pricingResult.DiscountAmount,
+                TotalTax = pricingResult.TaxAmount,
+                TotalAmount = pricingResult.FinalTotal,
+                AmountCredited = 0,
+                AmountPaid = 0,
+                AmountRemaining = pricingResult.FinalTotal,
+                // Taslak Statüsü (Ödeme Bekliyor)
+                Status = InvoiceStatus.Open
+            };
+            await _unitOfWork.Repository<Invoice>().AddAsync(invoice);
+
+            var invoiceLine = new InvoiceLine
+            {
+                InvoiceId = invoice.Id,
+                SubscriptionId = subscription.Id,
+                ProductId = product.Id,
+                Description = $"{subscription.Label} - {price.Name} - Abonelik Başlangıç Ücreti",
+                PeriodStart = DateTime.UtcNow,
+                PeriodEnd = pricingResult.NextBillingDate,
+                Quantity = 1,
+                UnitPrice = pricingResult.ProratedAmount,
+                DiscountAmount = pricingResult.DiscountAmount,
+                TaxRate = price.VatRate,
+                TaxAmount = pricingResult.TaxAmount,
+                TotalAmount = pricingResult.FinalTotal,
+                IsProration = pricingResult.ProratedAmount != price.Amount
+            };
+            await _unitOfWork.Repository<InvoiceLine>().AddAsync(invoiceLine);
+            #endregion
+
+            #region 7. Activity Log Kaydı
             var activityLog = new SubscriptionActivityLog
             {
                 SubscriptionId = subscription.Id,
-                Description = $"Abonelik başlatma isteği alındı. Nexi ödemesi bekleniyor. (Tutar: {pricingResult.FinalTotal} {price.Currency})",
+                Description = $"Abonelik başlatma isteği alındı ve #{invoiceNumber} numaralı taslak fatura oluşturuldu. Nexi ödemesi bekleniyor. (Tutar: {pricingResult.FinalTotal} {price.Currency})",
                 CreatedAt = DateTime.UtcNow,
-                Action = "Iniate Subscription"
+                Action = "Initiate Subscription"
             };
             await _unitOfWork.Repository<SubscriptionActivityLog>().AddAsync(activityLog);
             #endregion
@@ -144,18 +200,11 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
             // Tüm taslakları tek hamlede veritabanına mühürlüyoruz
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            #region 7. Nexi Ödeme Linki Oluşturma
-            // Kusursuz Referansımız: Direkt olarak SubscriptionId! (Webhook'ta bu ID ile uyanacağız)
-
-            // Nexi İçin Integer (Kuruş) Dönüşümü
+            #region 8. Nexi Ödeme Linki Oluşturma
             int unitPriceInCents = (int)Math.Round(pricingResult.SubTotal * 100);
-            // Sadece KDV Tutarı
             int taxAmountInCents = (int)Math.Round(pricingResult.TaxAmount * 100);
-            // Müşteriden çekilecek tam tutar (Net + KDV)
             int grossAmountInCents = (int)Math.Round(pricingResult.FinalTotal * 100);
-            // Satırın toplam net tutarı (Adet 1 olduğu için unitPriceInCents ile aynı)
             int netTotalAmountInCents = (int)Math.Round(pricingResult.SubTotal * 100);
-            // Vergi Oranı Basis Points (Örn: %25 KDV -> 25 * 100 = 2500)
             int taxRateBasisPoints = (int)Math.Round(price.VatRate * 100);
 
             var subId = $"SUB-{subscription.Id}";
@@ -170,26 +219,31 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
                 TaxRate = taxRateBasisPoints,
                 TaxAmount = taxAmountInCents,
                 GrossTotalAmount = grossAmountInCents,
-                NetTotalAmount = netTotalAmountInCents
+                NetTotalAmount = netTotalAmountInCents,
+                Currency = price.Currency,
+                ReturnUrl = request.ReturnUrl,
+                SubscriptionReference = subId
             };
-
             #endregion
 
             try
             {
                 var nexiPaymentResponse = await _nexiClient.InitializePaymentAsync(nexiOrderItemDto);
 
-                return Result<InitiateSubscriptionResponse>.Success(new InitiateSubscriptionResponse(subscription.Id, nexiPaymentResponse.HostedPaymentPageUrl), "Abonelik oluşturuldu ve ödeme sayfası linki alındı.");
+                return Result<InitiateSubscriptionResponse>.Success(new InitiateSubscriptionResponse(subscription.Id, nexiPaymentResponse!.HostedPaymentPageUrl!), "Abonelik ve taslak fatura oluşturuldu, ödeme sayfası linki alındı.");
             }
-            catch (Exception nexiEx)
+            catch (Exception)
             {
+                // İşlem başarısız olursa oluşturduğumuz Draft kayıtları da iptal ediyoruz (Void/Canceled)
                 subscription.Status = SubscriptionStatus.Canceled;
-                await _unitOfWork.SaveChangesAsync(cancellationToken); 
+                invoice.Status = InvoiceStatus.Void;
+                invoice.FailureMessage = "Ödeme altyapısına geçici olarak ulaşılamadı, işlem iptal edildi.";
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
                 return Result<InitiateSubscriptionResponse>.Failure("Ödeme altyapısına geçici olarak ulaşılamıyor.");
             }
-
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return Result<InitiateSubscriptionResponse>.Failure("İşlem sırasında beklenmeyen bir hata oluştu.");
         }

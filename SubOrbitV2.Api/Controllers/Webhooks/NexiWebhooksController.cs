@@ -22,9 +22,7 @@ public class NexiWebhooksController : ControllerBase
     /// Parametreleri direkt Query'den (URL'den) ve Header'dan yakalıyoruz.
     /// </summary>
     [HttpPost]
-    public async Task<IActionResult> HandleNexiWebhook(
-        [FromQuery] Guid projectId,
-        [FromQuery] string subId)
+    public async Task<IActionResult> HandleNexiWebhook([FromQuery] Guid projectId, [FromQuery] string subId)
     {
         // 1. Nexi'nin gönderdiği güvenlik token'ını Header'dan yakala
         var authHeader = Request.Headers["Authorization"].ToString();
