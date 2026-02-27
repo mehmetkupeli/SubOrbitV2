@@ -3,22 +3,22 @@ using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Application.Common.Models;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
-using SubOrbitV2.Domain.Entities.Integration;
+using SubOrbitV2.Domain.Entities.Catalog;
 using SubOrbitV2.Domain.Entities.Organization;
 using SubOrbitV2.Domain.Enums;
 using SubOrbitV2.Domain.Specifications.Billing;
+using SubOrbitV2.Domain.Specifications.Catalog;
 
 namespace SubOrbitV2.Application.Features.Billing.Commands.ProcessNexiWebhook;
 
 public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebhookCommand, Result<bool>>
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IEncryptionService _encryptionService;
-
-    public ProcessNexiWebhookCommandHandler(IUnitOfWork unitOfWork, IEncryptionService encryptionService)
+    private readonly IWebhookService _webhookService; // Sadece servis inject edildi
+    public ProcessNexiWebhookCommandHandler(IUnitOfWork unitOfWork, IWebhookService webhookService)
     {
         _unitOfWork = unitOfWork;
-        _encryptionService = encryptionService;
+        _webhookService = webhookService;
     }
 
     public async Task<Result<bool>> Handle(ProcessNexiWebhookCommand request, CancellationToken cancellationToken)
@@ -54,8 +54,12 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
         var invoiceSpec = new InvoiceBySubscriptionIdSpecification(request.ProjectId, subscription.Id);
         var invoice = await _unitOfWork.Repository<Invoice>().GetEntityWithSpec(invoiceSpec);
 
-        if (payer == null || invoice == null)
-            return Result<bool>.Failure("Aboneliğe bağlı Payer veya açık durumdaki Taslak Fatura bulunamadı.");
+        var productSpec = new ProductWithFeaturesSpecification(request.ProjectId, subscription.ProductId);
+        var product = await _unitOfWork.Repository<Product>().GetEntityWithSpec(productSpec);
+
+        if (payer == null || invoice == null || product == null)
+            return Result<bool>.Failure("Aboneliğe bağlı gerekli veriler bulunamadı.");
+
         #endregion
 
         try
@@ -105,15 +109,13 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
             await _unitOfWork.Repository<SubscriptionActivityLog>().AddAsync(activityLog);
 
             // İşlem 6: Outbound Webhook (Müşteriye/Muhasebeye Haber Verme)
-            var webhookEvent = new WebhookEvent
-            {
-                ProjectId = request.ProjectId,
-                EventType = "subscription.activated",
-                Payload = $"{{\"ExternalId\": \"{payer.ExternalId}\", \"SubscriptionId\": \"{subscription.Id}\", \"InvoiceId\": \"{invoice.Id}\"}}",
-                Status = WebhookEventStatus.Pending,
-                CreatedAt = DateTime.UtcNow
-            };
-            await _unitOfWork.Repository<WebhookEvent>().AddAsync(webhookEvent);
+            await _webhookService.NotifyAccessGrantedAsync(
+                request.ProjectId,
+                payer,
+                product,
+                subscription.NextBillingDate,
+                product.FeatureValues.ToList()
+            );
 
             // TÜM SİSTEMİ TEK SEFERDE MÜHÜRLE
             await _unitOfWork.SaveChangesAsync(cancellationToken);
