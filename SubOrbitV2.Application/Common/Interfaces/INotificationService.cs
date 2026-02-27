@@ -1,14 +1,15 @@
-﻿using SubOrbitV2.Application.Common.Models;
+﻿using SubOrbitV2.Domain.Entities.Billing;
+using SubOrbitV2.Domain.Entities.Organization;
 
 namespace SubOrbitV2.Application.Common.Interfaces;
 
 /// <summary>
-/// Tüm bildirim kanallarını (Email, SMS, Push) tek bir noktadan yöneten servis.
+/// Sistemdeki bildirimleri (E-posta, SMS) hazırlayıp kuyruğa (Outbox) alan yönetici servis.
 /// </summary>
 public interface INotificationService
 {
     /// <summary>
-    /// İsteğin içindeki 'Channel' tipine göre ilgili sağlayıcıyı bulur ve gönderim yapar.
+    /// Fatura kesildiğinde müşteriye şablonlu bir e-posta bildirimini kuyruğa atar.
     /// </summary>
-    Task SendAsync(NotificationRequest request);
+    Task NotifyInvoiceCreatedAsync(Guid projectId, Payer payer, Invoice invoice, Project project, string pdfPath);
 }

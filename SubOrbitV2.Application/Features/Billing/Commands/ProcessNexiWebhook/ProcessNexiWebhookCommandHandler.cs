@@ -14,11 +14,17 @@ namespace SubOrbitV2.Application.Features.Billing.Commands.ProcessNexiWebhook;
 public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebhookCommand, Result<bool>>
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IWebhookService _webhookService; // Sadece servis inject edildi
-    public ProcessNexiWebhookCommandHandler(IUnitOfWork unitOfWork, IWebhookService webhookService)
+    private readonly IWebhookService _webhookService;
+    private readonly IPdfService _pdfService;
+    private readonly IFileService _fileService;
+    private readonly INotificationService _notificationService;
+    public ProcessNexiWebhookCommandHandler(IUnitOfWork unitOfWork, IWebhookService webhookService, IPdfService pdfService, IFileService fileService, INotificationService notificationService)
     {
         _unitOfWork = unitOfWork;
         _webhookService = webhookService;
+        _pdfService = pdfService;
+        _fileService = fileService;
+        _notificationService = notificationService;
     }
 
     public async Task<Result<bool>> Handle(ProcessNexiWebhookCommand request, CancellationToken cancellationToken)
@@ -109,12 +115,31 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
             await _unitOfWork.Repository<SubscriptionActivityLog>().AddAsync(activityLog);
 
             // İşlem 6: Outbound Webhook (Müşteriye/Muhasebeye Haber Verme)
+            // 1. PDF Üret ve Sunucuya Kaydet
+            var pdfBytes = await _pdfService.GenerateInvoicePdfAsync(invoice, project);
+            var pdfPath = await _fileService.SaveFileAsync(pdfBytes, $"{invoice.Number}.pdf", "invoices");
+
+            // Faturadaki dosya yolunu güncelle (Bunun için ufak bir save daha atıyoruz)
+            invoice.PdfPath = pdfPath;
+            _unitOfWork.Repository<Invoice>().Update(invoice);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // 2. Makineye (Müşteri Yazılımına) Bildirim
             await _webhookService.NotifyAccessGrantedAsync(
                 request.ProjectId,
                 payer,
                 product,
                 subscription.NextBillingDate,
                 product.FeatureValues.ToList()
+            );
+
+            // 3. İnsana (Müşterinin Son Kullanıcısına) Bildirim
+            await _notificationService.NotifyInvoiceCreatedAsync(
+                request.ProjectId,
+                payer,
+                invoice,
+                project,
+                pdfPath
             );
 
             // TÜM SİSTEMİ TEK SEFERDE MÜHÜRLE

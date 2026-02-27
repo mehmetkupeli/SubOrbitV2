@@ -14,34 +14,30 @@ public class NotificationDispatcherService : INotificationDispatcherService
     private readonly ApplicationDbContext _dbContext;
     private readonly IEmailSender _emailSender;
     private readonly IEncryptionService _encryptionService;
-    private readonly ILogger<NotificationDispatcherService> _logger;
     #endregion
 
     #region Constructor
     public NotificationDispatcherService(
         ApplicationDbContext dbContext,
         IEmailSender emailSender,
-        IEncryptionService encryptionService,
-        ILogger<NotificationDispatcherService> logger)
+        IEncryptionService encryptionService)
     {
         _dbContext = dbContext;
         _emailSender = emailSender;
         _encryptionService = encryptionService;
-        _logger = logger;
     }
     #endregion
 
     #region Public Methods
     public async Task ProcessNotificationQueueAsync(Guid notificationId)
     {
-        // 1. Veriyi Getir (Global filtreleri ez, background job context'i yok)
+        // 1. Filtreleri yoksayarak Olayı ve Tenant ayarlarını çek
         var notification = await _dbContext.NotificationQueues
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(x => x.Id == notificationId);
 
         if (notification == null || notification.Status == NotificationStatus.Sent) return;
 
-        // 2. Projenin SMTP ayarlarını çek
         var projectSettings = await _dbContext.ProjectSettings
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(x => x.ProjectId == notification.ProjectId);
@@ -54,22 +50,22 @@ public class NotificationDispatcherService : INotificationDispatcherService
             return;
         }
 
-        // 3. Şifreyi Çöz ve Ayarları Hazırla
+        // 2. SMTP Şifre Çözümü
         SmtpConfiguration? smtpConfig;
         try
         {
             var json = _encryptionService.Decrypt(projectSettings.EncryptedSmtpConfig);
             smtpConfig = JsonSerializer.Deserialize<SmtpConfiguration>(json);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             notification.Status = NotificationStatus.Failed;
-            notification.ErrorMessage = $"SMTP Ayarları çözülemedi: {ex.Message}";
+            notification.ErrorMessage = "SMTP Ayarları çözümsüz/hatalı.";
             await _dbContext.SaveChangesAsync();
             return;
         }
 
-        // 4. Gönderim İşlemi
+        // 3. Gönderim Kararı (Strategy)
         try
         {
             if (notification.Channel == NotificationChannel.Email)
@@ -79,8 +75,9 @@ public class NotificationDispatcherService : INotificationDispatcherService
                     notification.Recipient,
                     notification.Subject,
                     notification.Body,
-                    notification.AttachmentPath); // Fatura PDF'ini ekliyoruz
+                    notification.AttachmentPath);
             }
+            // İleride: else if (notification.Channel == Sms) { _smsSender.Send(...) }
 
             notification.Status = NotificationStatus.Sent;
             notification.SentAt = DateTime.UtcNow;
@@ -89,8 +86,6 @@ public class NotificationDispatcherService : INotificationDispatcherService
         {
             notification.RetryCount++;
             notification.ErrorMessage = ex.Message;
-
-            // Basit bir retry mantığı, 3 kereden sonra iptal
             notification.Status = notification.RetryCount >= 3 ? NotificationStatus.Failed : NotificationStatus.Pending;
         }
 

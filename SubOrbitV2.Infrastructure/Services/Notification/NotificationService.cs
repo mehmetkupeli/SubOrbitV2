@@ -1,49 +1,79 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Hangfire;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Logging;
 using SubOrbitV2.Application.Common.Interfaces;
-using SubOrbitV2.Application.Common.Models;
+using SubOrbitV2.Domain.Abstractions;
+using SubOrbitV2.Domain.Entities.Billing;
+using SubOrbitV2.Domain.Entities.Communication;
+using SubOrbitV2.Domain.Entities.Organization;
 using SubOrbitV2.Domain.Enums;
 
 namespace SubOrbitV2.Infrastructure.Services.Notification;
 
 public class NotificationService : INotificationService
 {
-    private readonly IEmailSender _emailSender;
+    #region Fields
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IBackgroundJobClient _jobClient;
+    private readonly IWebHostEnvironment _env;
     private readonly ILogger<NotificationService> _logger;
+    #endregion
 
-    public NotificationService(IEmailSender emailSender, ILogger<NotificationService> logger)
+    #region Constructor
+    public NotificationService(
+        IUnitOfWork unitOfWork,
+        IBackgroundJobClient jobClient,
+        IWebHostEnvironment env,
+        ILogger<NotificationService> logger)
     {
-        _emailSender = emailSender;
+        _unitOfWork = unitOfWork;
+        _jobClient = jobClient;
+        _env = env;
         _logger = logger;
     }
+    #endregion
 
-    public async Task SendAsync(NotificationRequest request)
+    #region Public Methods
+    public async Task NotifyInvoiceCreatedAsync(Guid projectId, Payer payer, Invoice invoice, Project project, string pdfPath)
     {
-        _logger.LogInformation("Processing notification via channel: {Channel} to {Recipient}", request.Channel, request.Recipient);
+        // 1. Şablon (Template) Okuma
+        var templatePath = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "templates", "email", "InvoiceCreatedTemplate.html");
+        string htmlBody;
 
-        switch (request.Channel)
+        if (File.Exists(templatePath))
         {
-            case NotificationChannel.Email:
-                await SendEmailAsync(request);
-                break;
-
-            case NotificationChannel.Sms:
-                _logger.LogWarning("SMS Provider not implemented yet.");
-                break;
-
-            default:
-                _logger.LogError("Unsupported notification channel: {Channel}", request.Channel);
-                break;
+            htmlBody = await File.ReadAllTextAsync(templatePath);
+            // Dinamik Değişkenleri Enjekte Etme
+            htmlBody = htmlBody.Replace("{{CustomerName}}", payer.Name)
+                               .Replace("{{ProjectName}}", project.Name)
+                               .Replace("{{InvoiceNumber}}", invoice.Number)
+                               .Replace("{{TotalAmount}}", $"{invoice.TotalAmount:N2} {invoice.Currency}");
         }
-    }
-
-    private async Task SendEmailAsync(NotificationRequest request)
-    {
-        if (request.SmtpConfig == null)
+        else
         {
-            _logger.LogError("SMTP Config is missing for Email notification.");
-            return;
+            // Şablon dosyası bulunamazsa Fallback (Güvenlik ağı)
+            htmlBody = $"<h3>Merhaba {payer.Name},</h3><p>{project.Name} hizmetinize ait <b>{invoice.Number}</b> numaralı faturanızı ekte bulabilirsiniz.</p>";
+            _logger.LogWarning("Email template not found at {Path}", templatePath);
         }
 
-        await _emailSender.SendEmailAsync(request.SmtpConfig, request.Recipient, request.Subject, request.Body);
+        // 2. Kuyruğa Kayıt (Outbox Pattern)
+        var notification = new NotificationQueue
+        {
+            ProjectId = projectId,
+            Recipient = payer.Email,
+            Channel = NotificationChannel.Email,
+            Subject = $"{project.Name} - Faturanız ve Abonelik Bilgileriniz",
+            Body = htmlBody,
+            AttachmentPath = pdfPath,
+            Status = NotificationStatus.Pending,
+            ScheduledTime = DateTime.UtcNow
+        };
+
+        await _unitOfWork.Repository<NotificationQueue>().AddAsync(notification);
+        await _unitOfWork.SaveChangesAsync(); // Değişikliği mühürle
+
+        // 3. Arka Plan İşlemini Tetikle (Hangfire)
+        _jobClient.Enqueue<INotificationDispatcherService>(x => x.ProcessNotificationQueueAsync(notification.Id));
     }
+    #endregion
 }
