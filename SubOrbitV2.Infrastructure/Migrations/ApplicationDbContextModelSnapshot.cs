@@ -2,21 +2,18 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SubOrbitV2.Infrastructure.Data;
 
 #nullable disable
 
-namespace SubOrbitV2.Infrastructure.Data.Migrations
+namespace SubOrbitV2.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260218102852_InitialCreate")]
-    partial class InitialCreate
+    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -244,9 +241,6 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
                     b.Property<Guid>("InvoiceId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("InvoiceId1")
-                        .HasColumnType("uuid");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
@@ -295,8 +289,6 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("InvoiceId");
-
-                    b.HasIndex("InvoiceId1");
 
                     b.HasIndex("ProductId");
 
@@ -420,9 +412,6 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
                     b.Property<Guid?>("ActiveCouponId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("ActiveCouponId1")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime?>("CanceledAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -461,13 +450,7 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
                     b.Property<Guid>("PayerId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("PayerId1")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid>("PriceId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("PriceId1")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ProductId")
@@ -500,15 +483,9 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
 
                     b.HasIndex("ActiveCouponId");
 
-                    b.HasIndex("ActiveCouponId1");
-
                     b.HasIndex("PayerId");
 
-                    b.HasIndex("PayerId1");
-
                     b.HasIndex("PriceId");
-
-                    b.HasIndex("PriceId1");
 
                     b.HasIndex("ProductId");
 
@@ -1014,6 +991,9 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AttachmentPath")
+                        .HasColumnType("text");
+
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1103,6 +1083,12 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("RefreshToken")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RefreshTokenExpiryTime")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -1402,24 +1388,20 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("SubOrbitV2.Domain.Entities.Billing.Invoice", b =>
                 {
-                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Payer", null)
+                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Payer", "Payer")
                         .WithMany("Invoices")
                         .HasForeignKey("PayerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Payer");
                 });
 
             modelBuilder.Entity("SubOrbitV2.Domain.Entities.Billing.InvoiceLine", b =>
                 {
-                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Invoice", null)
+                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Invoice", "Invoice")
                         .WithMany("Lines")
                         .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Invoice", "Invoice")
-                        .WithMany()
-                        .HasForeignKey("InvoiceId1")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1438,37 +1420,21 @@ namespace SubOrbitV2.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("SubOrbitV2.Domain.Entities.Billing.Subscription", b =>
                 {
-                    b.HasOne("SubOrbitV2.Domain.Entities.Catalog.Coupon", null)
+                    b.HasOne("SubOrbitV2.Domain.Entities.Catalog.Coupon", "ActiveCoupon")
                         .WithMany()
                         .HasForeignKey("ActiveCouponId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("SubOrbitV2.Domain.Entities.Catalog.Coupon", "ActiveCoupon")
-                        .WithMany()
-                        .HasForeignKey("ActiveCouponId1");
-
-                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Payer", null)
+                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Payer", "Payer")
                         .WithMany("Subscriptions")
                         .HasForeignKey("PayerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("SubOrbitV2.Domain.Entities.Billing.Payer", "Payer")
-                        .WithMany()
-                        .HasForeignKey("PayerId1")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("SubOrbitV2.Domain.Entities.Catalog.Price", null)
+                    b.HasOne("SubOrbitV2.Domain.Entities.Catalog.Price", "Price")
                         .WithMany()
                         .HasForeignKey("PriceId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SubOrbitV2.Domain.Entities.Catalog.Price", "Price")
-                        .WithMany()
-                        .HasForeignKey("PriceId1")
-                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("SubOrbitV2.Domain.Entities.Catalog.Product", null)

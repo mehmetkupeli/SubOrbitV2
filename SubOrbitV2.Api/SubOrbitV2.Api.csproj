@@ -25,4 +25,13 @@
     <Folder Include="uploads\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Templates\Email\StandardInvoiceTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Templates\Email\WelcomeAndInvoiceTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

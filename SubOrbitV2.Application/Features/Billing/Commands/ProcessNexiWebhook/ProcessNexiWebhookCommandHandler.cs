@@ -117,34 +117,33 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
             // İşlem 6: Outbound Webhook (Müşteriye/Muhasebeye Haber Verme)
             // 1. PDF Üret ve Sunucuya Kaydet
             var pdfBytes = await _pdfService.GenerateInvoicePdfAsync(invoice, project);
-            var pdfPath = await _fileService.SaveFileAsync(pdfBytes, $"{invoice.Number}.pdf", "invoices");
+            var pdfPath = await _fileService.SaveFileAsync(pdfBytes, $"{invoice.Number}.pdf", "invoices",payer.Id.ToString());
 
             // Faturadaki dosya yolunu güncelle (Bunun için ufak bir save daha atıyoruz)
             invoice.PdfPath = pdfPath;
             _unitOfWork.Repository<Invoice>().Update(invoice);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
 
             // 2. Makineye (Müşteri Yazılımına) Bildirim
-            await _webhookService.NotifyAccessGrantedAsync(
-                request.ProjectId,
-                payer,
-                product,
-                subscription.NextBillingDate,
-                product.FeatureValues.ToList()
+            var webhookEventId = await _webhookService.NotifyAccessGrantedAsync(
+                request.ProjectId, payer, product, subscription.NextBillingDate, product.FeatureValues.ToList()
             );
 
-            // 3. İnsana (Müşterinin Son Kullanıcısına) Bildirim
-            await _notificationService.NotifyInvoiceCreatedAsync(
-                request.ProjectId,
-                payer,
-                invoice,
-                project,
-                pdfPath
+            bool isProrated = invoice.Lines.Any(x => x.IsProration);
+
+            // 3. E-Posta taslağını hazırlatıp ID'sini alalım
+            var notificationId = await _notificationService.NotifyWelcomeAndSubscriptionAsync(
+                request.ProjectId, payer, invoice, project, pdfPath,isProrated
             );
 
             // TÜM SİSTEMİ TEK SEFERDE MÜHÜRLE
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+            #endregion
+
+            #region 8. Hangfire Tetikleyicileri (Delegation)
+            _webhookService.DispatchBackgroundJob(webhookEventId);
+            _notificationService.DispatchBackgroundJob(notificationId);
             #endregion
 
             return Result<bool>.Success(true, "Tüm Fulfillment işlemleri başarıyla tamamlandı.");

@@ -36,7 +36,7 @@ public class WebhookService : IWebhookService
 
     #region Public Methods (İş Akışları)
 
-    public async Task NotifyAccessGrantedAsync(Guid projectId, Payer payer, Product product, DateTime validUntil, List<ProductFeatureValue> features)
+    public async Task<Guid> NotifyAccessGrantedAsync(Guid projectId, Payer payer, Product product, DateTime validUntil, List<ProductFeatureValue> features)
     {
         // 1. Strongly-Typed Payload Hazırlığı (Müşterinin beklediği format)
         var payload = new AccessWebhookPayload
@@ -69,7 +69,7 @@ public class WebhookService : IWebhookService
         };
 
         // 2. İşlemi kaydet ve tetikle
-        await TriggerEventAsync(projectId, payload.Event, payload);
+        return await TriggerEventAsync(projectId, payload.Event, payload);
     }
 
     #endregion
@@ -80,7 +80,7 @@ public class WebhookService : IWebhookService
     /// Hazırlanan payload'u JSON formatına çevirir, veritabanına taslak (Pending) olarak kaydeder 
     /// ve Hangfire üzerinden arka plan dağıtım (Dispatcher) görevini tetikler.
     /// </summary>
-    private async Task TriggerEventAsync(Guid projectId, string eventType, object payload)
+    private async Task<Guid> TriggerEventAsync(Guid projectId, string eventType, object payload)
     {
         // API standartlarına uygun olması için camelCase JSON serileştirme ayarı
         var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -94,17 +94,17 @@ public class WebhookService : IWebhookService
             NextRetryDate = DateTime.UtcNow
         };
 
-        // Olayı Veritabanı kuyruğuna (Unit of Work) ekliyoruz.
-        // DİKKAT: CommandHandler tarafındaki Fatura, Payer ve Cüzdan güncellemeleriyle BİRLİKTE
-        // aynı Transaction içerisinde atomik olarak mühürlenir. (Outbox Pattern)
+        // SADECE MEMORY'E EKLİYORUZ (Unit of Work)
         await _unitOfWork.Repository<WebhookEvent>().AddAsync(webhookEvent);
 
-        // Veritabanı değişikliklerini tek hamlede mühürle
-        await _unitOfWork.SaveChangesAsync();
+        // İşlemin ID'sini geri dönüyoruz
+        return webhookEvent.Id;
+    }
 
-        // Veri veritabanına mühürlendikten SONRA Hangfire Job'ını tetikliyoruz.
-        // Bu sayede transaction fail olursa boş yere webhook gönderilmemiş olur.
-        _jobClient.Enqueue<IWebhookDispatcherService>(x => x.ProcessWebhookEventAsync(webhookEvent.Id));
+    public void DispatchBackgroundJob(Guid webhookEventId)
+    {
+        // Gelen ID'yi alıp Hangfire'a fırlatıyoruz
+        _jobClient.Enqueue<IWebhookDispatcherService>(x => x.ProcessWebhookEventAsync(webhookEventId));
     }
 
     #endregion

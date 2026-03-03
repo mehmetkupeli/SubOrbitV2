@@ -61,7 +61,7 @@ public class WebhookDispatcherService : IWebhookDispatcherService
         try
         {
             // İmzayı oluştur (Güvenlik)
-            var secret = project.Settings.WebhookSecret ?? project.ApiKey;
+            var secret = project.ApiKey;
             var signature = ComputeHmacSha256(evt.Payload, secret);
 
             var request = new HttpRequestMessage(HttpMethod.Post, attempt.TargetUrl);

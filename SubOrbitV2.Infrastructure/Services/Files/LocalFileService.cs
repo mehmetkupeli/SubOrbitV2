@@ -75,16 +75,26 @@ public class LocalFileService : IFileService
         if (File.Exists(fullPath)) File.Delete(fullPath);
     }
 
-    public async Task<string> SaveFileAsync(byte[] content, string fileName, string folderName)
+    public async Task<string> SaveFileAsync(byte[] content, string fileName, string folderName, string payerId)
     {
-        if (content == null || content.Length == 0) return string.Empty;
+        if (content == null || content.Length == 0)
+            return string.Empty;
 
-        var uploadPath = Path.Combine(_environment.WebRootPath ?? _environment.ContentRootPath, "uploads", folderName);
-        if (!Directory.Exists(uploadPath)) Directory.CreateDirectory(uploadPath);
+        var uploadPath = Path.Combine(
+            _environment.WebRootPath ?? _environment.ContentRootPath,
+            "uploads",
+            folderName,               
+            payerId                   
+        );
+
+        if (!Directory.Exists(uploadPath))
+            Directory.CreateDirectory(uploadPath);
 
         var filePath = Path.Combine(uploadPath, fileName);
+
         await File.WriteAllBytesAsync(filePath, content);
 
-        return $"/uploads/{folderName}/{fileName}";
+        // Web'den erişim için dönen yol (URL)
+        return $"/uploads/{folderName}/{payerId}/{fileName}";
     }
 }

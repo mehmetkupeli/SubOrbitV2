@@ -141,4 +141,5 @@ public class Invoice : BaseEntity, IMustHaveProject
 
     // Navigation
     public virtual ICollection<InvoiceLine> Lines { get; set; }
+    public virtual Payer Payer { get; set; }
 }

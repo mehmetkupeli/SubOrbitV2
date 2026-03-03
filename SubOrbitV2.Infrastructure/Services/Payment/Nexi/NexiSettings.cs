@@ -6,7 +6,7 @@
 /// </summary>
 public class NexiSettings
 {
-    public const string SectionName = "NexiSettings";
+    public const string SectionName = "Nexi";
     public string BaseUrl { get; set; } = string.Empty;
     public string PublicApiUrl { get; set; } = string.Empty;
 }

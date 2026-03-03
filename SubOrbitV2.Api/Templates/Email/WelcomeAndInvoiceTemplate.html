@@ -1,0 +1,105 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        .header {
+            background-color: #fdfdfd;
+            padding: 25px;
+            text-align: center;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        .body-content {
+            padding: 30px;
+            line-height: 1.6;
+        }
+
+        .invoice-box {
+            background-color: #f9fbfd;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+            .invoice-box h3 {
+                margin: 0 0 10px 0;
+                color: #0056b3;
+            }
+
+            .invoice-box p {
+                margin: 5px 0;
+                font-size: 14px;
+            }
+
+        .footer {
+            background-color: #fdfdfd;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px solid #eaeaea;
+        }
+
+        .suborbit-ad {
+            margin-top: 20px;
+            font-size: 11px;
+            color: #999;
+        }
+
+            .suborbit-ad a {
+                color: #0056b3;
+                text-decoration: none;
+                font-weight: bold;
+            }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            {{ProjectLogoOrName}}
+        </div>
+        <div class="body-content">
+            <h2 style="color: #2c3e50;">Aramıza Hoş Geldiniz, {{CustomerName}}! 🎉</h2>
+            <p><strong>{{ProjectName}}</strong> üzerindeki aboneliğiniz başarıyla aktifleştirildi ve ödemeniz alındı. Bizi tercih ettiğiniz için teşekkür ederiz.</p>
+
+            {{ProrationNotice}}
+
+            <div class="invoice-box">
+                <h3>Ödeme Özeti</h3>
+                <p><strong>Fatura No:</strong> {{InvoiceNumber}}</p>
+                <p><strong>Tarih:</strong> {{InvoiceDate}}</p>
+                <p><strong>Tahsil Edilen Tutar:</strong> <span style="font-size: 16px; font-weight: bold; color: #27ae60;">{{TotalAmount}}</span></p>
+            </div>
+
+            <p>Faturanızın orijinal PDF dokümanını bu e-postanın ekinde bulabilirsiniz.</p>
+            <p>Keyifli kullanımlar dileriz!</p>
+        </div>
+        <div class="footer">
+            <p>Bu e-posta <strong>{{ProjectName}}</strong> tarafından gönderilmiştir.</p>
+            <div class="suborbit-ad">
+                ⚡ Güvenli Ödeme ve Abonelik Altyapısı <a href="https://suborbit.multillo.com" target="_blank">SubOrbit V2</a> tarafından sağlanmaktadır.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

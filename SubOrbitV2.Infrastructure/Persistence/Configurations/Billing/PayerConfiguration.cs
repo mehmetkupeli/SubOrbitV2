@@ -60,12 +60,12 @@ public class PayerConfiguration : IEntityTypeConfiguration<Payer>
 
         // --- İlişkiler ---
         builder.HasMany(x => x.Subscriptions)
-               .WithOne() // Subscriptions tablosunda Payer nesnesi tanımlı değilse boş bırakılır
-               .HasForeignKey(s => s.PayerId)
-               .OnDelete(DeleteBehavior.Cascade);
+       .WithOne(s => s.Payer) // Navigation property
+       .HasForeignKey(s => s.PayerId)
+       .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(x => x.Invoices)
-               .WithOne()
+               .WithOne(i => i.Payer) // Navigation property
                .HasForeignKey(i => i.PayerId)
                .OnDelete(DeleteBehavior.Restrict);
     }

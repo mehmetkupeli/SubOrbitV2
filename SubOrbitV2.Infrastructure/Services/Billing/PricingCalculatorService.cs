@@ -17,32 +17,25 @@ public class PricingCalculatorService : IPricingCalculatorService
         #region 1. Alignment (Hizalama) ve Kıstelyevm (Proration) Hesaplaması
         if (request.AlignmentStrategy == BillingAlignmentStrategy.None || request.Interval == BillingInterval.OneTime)
         {
-            // Hizalama yoksa, standart döngü uygulanır (Örn: Bugün + 1 Ay)
             nextBillingDate = CalculateStandardNextDate(now, request.Interval, request.IntervalCount);
         }
         else
         {
-            // Hizalama varsa sonraki fatura kesim tarihini bul
             nextBillingDate = GetNextAlignmentDate(now, request.AlignmentStrategy, request.AlignmentDay);
-
-            // Standart bir döngü kaç gün sürüyor? (Örn: 1 ay = 30 gün)
             DateTime standardNext = CalculateStandardNextDate(now, request.Interval, request.IntervalCount);
             double standardTotalDays = (standardNext - now).TotalDays;
-
-            // Hizalanan tarihe kaç gün kaldı? (Örn: Ayın 1'ine 10 gün kaldı)
             double daysUntilNext = (nextBillingDate - now).TotalDays;
 
             if (daysUntilNext > 0 && standardTotalDays > 0)
             {
-                // Kıstelyevm (Proration) Oranı: (Kalan Gün / Toplam Gün)
                 decimal ratio = (decimal)(daysUntilNext / standardTotalDays);
-
-                // Eğer hesaplanan oran 1'den büyükse (nadir edge-case), 1'e sabitle
                 ratio = Math.Min(ratio, 1.0m);
-
                 proratedAmount = request.BaseAmount * ratio;
             }
         }
+
+        // ÇÖZÜM 1: Kıstelyevm tutarını ANINDA 2 haneye yuvarla
+        proratedAmount = Math.Round(proratedAmount, 2, MidpointRounding.AwayFromZero);
         #endregion
 
         #region 2. İndirim (Coupon) Hesaplaması
@@ -51,37 +44,40 @@ public class PricingCalculatorService : IPricingCalculatorService
         {
             if (request.CouponType.Value == CouponDiscountType.Percentage)
             {
-                // Yüzdelik indirim prorated (hesaplanmış) tutar üzerinden yapılır
                 discountAmount = proratedAmount * (request.CouponValue.Value / 100m);
             }
             else if (request.CouponType.Value == CouponDiscountType.FixedAmount)
             {
-                // Sabit tutar
                 discountAmount = request.CouponValue.Value;
             }
         }
 
-        // İndirim, toplam tutardan büyük olamaz (Eksi bakiye çekilmez)
         discountAmount = Math.Min(discountAmount, proratedAmount);
 
+        // ÇÖZÜM 2: İndirim tutarını ANINDA 2 haneye yuvarla
+        discountAmount = Math.Round(discountAmount, 2, MidpointRounding.AwayFromZero);
+
+        // Ara toplam artık tamamen yuvarlanmış temiz 2 sayıdan oluşuyor
         decimal subTotal = proratedAmount - discountAmount;
         #endregion
 
         #region 3. Vergi (VAT) Hesaplaması
-        decimal taxAmount = subTotal * (request.VatRate / 100m);
+        // ÇÖZÜM 3: Vergiyi ham tutar üzerinden değil, yuvarlanmış subTotal üzerinden hesapla ve anında yuvarla
+        decimal taxAmount = Math.Round(subTotal * (request.VatRate / 100m), 2, MidpointRounding.AwayFromZero);
         #endregion
 
         #region 4. Yuvarlama (Nihai Toplam)
-        // Finansal sistemler (Nexi) genelde virgülden sonra 2 hane kabul eder
-        decimal finalTotal = Math.Round(subTotal + taxAmount, 2);
+        // ÇÖZÜM 4: Alt toplam ve vergi zaten 2 hane olduğu için direkt topla. Kuruş kayması ihtimali SIFIR.
+        decimal finalTotal = subTotal + taxAmount;
         #endregion
 
+        // Nesneye gönderirken tekrar Math.Round yapmaya gerek kalmadı, sayılarımız jilet gibi
         return new PricingResult(
             BaseAmount: request.BaseAmount,
-            ProratedAmount: Math.Round(proratedAmount, 2),
-            DiscountAmount: Math.Round(discountAmount, 2),
-            SubTotal: Math.Round(subTotal, 2),
-            TaxAmount: Math.Round(taxAmount, 2),
+            ProratedAmount: proratedAmount,
+            DiscountAmount: discountAmount,
+            SubTotal: subTotal,
+            TaxAmount: taxAmount,
             FinalTotal: finalTotal,
             NextBillingDate: nextBillingDate
         );

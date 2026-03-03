@@ -1,0 +1,93 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        /* Welcome template ile aynı CSS'i kullanabilirsin */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        .header {
+            background-color: #fdfdfd;
+            padding: 25px;
+            text-align: center;
+            border-bottom: 1px solid #eaeaea;
+        }
+
+        .body-content {
+            padding: 30px;
+            line-height: 1.6;
+        }
+
+        .invoice-box {
+            background-color: #f9fbfd;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .footer {
+            background-color: #fdfdfd;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px solid #eaeaea;
+        }
+
+        .suborbit-ad {
+            margin-top: 20px;
+            font-size: 11px;
+            color: #999;
+        }
+
+            .suborbit-ad a {
+                color: #0056b3;
+                text-decoration: none;
+                font-weight: bold;
+            }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            {{ProjectLogoOrName}}
+        </div>
+        <div class="body-content">
+            <h2 style="color: #2c3e50;">Fatura Bilgilendirmesi</h2>
+            <p>Sayın <strong>{{CustomerName}}</strong>,</p>
+            <p><strong>{{ProjectName}}</strong> hizmetinize ait yeni dönem faturanız oluşturulmuş ve ödemesi başarıyla alınmıştır.</p>
+
+            <div class="invoice-box">
+                <p><strong>Fatura No:</strong> {{InvoiceNumber}}</p>
+                <p><strong>Tarih:</strong> {{InvoiceDate}}</p>
+                <p><strong>Tutar:</strong> <span style="font-size: 16px; font-weight: bold;">{{TotalAmount}}</span></p>
+            </div>
+
+            <p>Detaylı faturanızı PDF olarak ekte inceleyebilirsiniz.</p>
+        </div>
+        <div class="footer">
+            <p>Bu e-posta <strong>{{ProjectName}}</strong> tarafından gönderilmiştir.</p>
+            <div class="suborbit-ad">
+                ⚡ Güvenli Ödeme ve Abonelik Altyapısı <a href="https://suborbit.multillo.com" target="_blank">SubOrbit V2</a> tarafından sağlanmaktadır.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

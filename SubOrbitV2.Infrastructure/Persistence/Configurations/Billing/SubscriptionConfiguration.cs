@@ -1,8 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SubOrbitV2.Domain.Entities.Billing;
+using SubOrbitV2.Domain.Entities.Catalog;
 
-namespace SubOrbitV2.Infrastructure.Persistence.Configurations.Billing;
+namespace SubOrbitV2.Infrastructure.Data.Configurations.Billing;
 
 public class SubscriptionConfiguration : IEntityTypeConfiguration<Subscription>
 {
@@ -12,17 +13,22 @@ public class SubscriptionConfiguration : IEntityTypeConfiguration<Subscription>
 
         builder.HasKey(x => x.Id);
 
-        // --- Indexler ---
+        // ---------------------------
+        // Indexler
+        // ---------------------------
         builder.HasIndex(x => x.PayerId);
         builder.HasIndex(x => x.ProductId);
-        // Composite Index
         builder.HasIndex(x => new { x.PayerId, x.IsMain });
 
-        // --- Alan Ayarları ---
-        builder.Property(x => x.ExternalId).HasMaxLength(100);
-        builder.Property(x => x.Label).HasMaxLength(200);
+        // ---------------------------
+        // Property Ayarları
+        // ---------------------------
+        builder.Property(x => x.ExternalId)
+               .HasMaxLength(100);
 
-        // --- Finansal ---
+        builder.Property(x => x.Label)
+               .HasMaxLength(200);
+
         builder.Property(x => x.VirtualBalance)
                .HasPrecision(18, 2)
                .HasDefaultValue(0);
@@ -30,28 +36,39 @@ public class SubscriptionConfiguration : IEntityTypeConfiguration<Subscription>
         builder.Property(x => x.Quantity)
                .HasDefaultValue(1);
 
-        // --- İlişkiler ---
-        builder.HasOne<Payer>()
+        builder.Property(x => x.Status)
+               .HasConversion<int>();
+
+        // ---------------------------
+        // RELATIONSHIPS
+        // ---------------------------
+
+        // Payer (Required)
+        builder.HasOne(x => x.Payer)
                .WithMany(p => p.Subscriptions)
                .HasForeignKey(x => x.PayerId)
+               .OnDelete(DeleteBehavior.Restrict)
                .IsRequired();
 
-        // Product & Price ilişkileri (Restrict)
-        builder.HasOne<Domain.Entities.Catalog.Product>()
-               .WithMany()
-               .HasForeignKey(x => x.ProductId)
-               .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasOne<Domain.Entities.Catalog.Price>()
-               .WithMany()
+        // Price (Required)
+        builder.HasOne(x => x.Price)
+               .WithMany() // Price tarafında collection yok
                .HasForeignKey(x => x.PriceId)
-               .OnDelete(DeleteBehavior.Restrict);
+               .OnDelete(DeleteBehavior.Restrict)
+               .IsRequired();
 
-        // Kupon (SetNull)
-        builder.HasOne<Domain.Entities.Catalog.Coupon>()
+        // ActiveCoupon (Optional)
+        builder.HasOne(x => x.ActiveCoupon)
                .WithMany()
                .HasForeignKey(x => x.ActiveCouponId)
-               .IsRequired(false)
-               .OnDelete(DeleteBehavior.SetNull);
+               .OnDelete(DeleteBehavior.SetNull)
+               .IsRequired(false);
+
+        // Product (Required - navigation yok ama FK var)
+        builder.HasOne<Product>()
+               .WithMany()
+               .HasForeignKey(x => x.ProductId)
+               .OnDelete(DeleteBehavior.Restrict)
+               .IsRequired();
     }
 }

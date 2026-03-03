@@ -40,7 +40,7 @@ public class NexiClient : INexiClient
         var webhookUrl = $"{_nexiSettings.PublicApiUrl}/nexi?projectId={_projectContextService.ProjectId}&subId={orderItem.SubscriptionReference}";
 
         var requestBody = new CreatePaymentRequest(
-            new NexiCheckout("HostedPaymentPage", orderItem.ReturnUrl, orderItem.TermsUrl, true, true),
+            new NexiCheckout("HostedPaymentPage", orderItem.ReturnUrl, !string.IsNullOrEmpty(orderItem.TermsUrl) ? orderItem.TermsUrl : orderItem.ReturnUrl, true, true),
             new NexiOrder(
                 new[]
                 {
@@ -115,8 +115,8 @@ public class NexiClient : INexiClient
             new NexiCheckout(
                 IntegrationType: "HostedPaymentPage",
                 ReturnUrl: returnUrl,
-                TermsUrl: termsUrl,
-                Charge: false, // Yorum satırındaki kurala uygun olarak düzeltildi.
+                TermsUrl: !string.IsNullOrEmpty(termsUrl) ? termsUrl : returnUrl,
+                Charge: false, 
                 MerchantHandlesConsumerData: true
             ),
             new NexiOrder(

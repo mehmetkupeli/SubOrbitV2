@@ -59,8 +59,7 @@ public class SmtpEmailSender : IEmailSender
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send email to {To} using host {Host}", to, config.Host);
-            // Burada throw etmiyoruz, iş akışı (fatura oluşumu) bozulmasın diye.
-            // Ama NotificationStatus = Failed olarak işaretlenecek logic Application katmanında kurulacak.
+            throw;
         }
     }
 }

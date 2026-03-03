@@ -16,7 +16,7 @@ public class ProjectResolutionMiddleware
 
     public async Task InvokeAsync(HttpContext context, IProjectContext projectContext, ApplicationDbContext dbContext)
     {
-        // 1. Statik Dosyalar ve Swagger muafiyeti (Bunlar endpoint bile değil)
+        // 1. Statik Dosyalar ve Swagger muafiyeti
         var path = context.Request.Path.Value?.ToLower();
         if (path != null && (path.StartsWith("/swagger") || path.StartsWith("/favicon.ico")))
         {
@@ -24,41 +24,17 @@ public class ProjectResolutionMiddleware
             return;
         }
 
-        // 2. Mevcut Endpoint'i al
-        var endpoint = context.GetEndpoint();
-        if (endpoint == null)
-        {
-            await _next(context);
-            return;
-        }
-
-        // 3. [AllowAnonymous] kontrolü (Login gerektirmeyenler her zaman geçer)
-        if (endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>() != null)
-        {
-            await _next(context);
-            return;
-        }
-
-        // 4. [MustHaveProject] Kontrolü (İŞTE AKILLI KISIM BURASI)
-        // Eğer endpoint'te bu attribute YOKSA, ProjectId zorunlu değildir.
-        var mustHaveProject = endpoint.Metadata.GetMetadata<MustHaveProjectAttribute>();
-        if (mustHaveProject == null)
-        {
-            await _next(context);
-            return;
-        }
-
-        // 5. Eğer buraya geldiysek istekte ProjectId ZORUNLUDUR!
+        #region 2. ÇÖZÜMLEME (RESOLUTION) AŞAMASI: ProjectId'yi her yerden ara
         Guid? resolvedProjectId = null;
 
-        // Senaryo A: Payer (Müşteri Portalı) girişi - Token'dan oku
+        // Senaryo A: Payer (Müşteri Portalı) girişi - Token'dan (Claim) oku
         var projectIdClaim = context.User.FindFirst("ProjectId")?.Value;
         if (!string.IsNullOrEmpty(projectIdClaim) && Guid.TryParse(projectIdClaim, out var tokenProjectId))
         {
             resolvedProjectId = tokenProjectId;
         }
 
-        // Senaryo B: Tenant/Admin girişi - Header'dan oku
+        // Senaryo B: Tenant/Admin girişi - Header'dan (X-Project-Id) oku
         if (resolvedProjectId == null && context.Request.Headers.TryGetValue("X-Project-Id", out var headerValue))
         {
             if (Guid.TryParse(headerValue.ToString(), out var headerProjectId))
@@ -67,24 +43,51 @@ public class ProjectResolutionMiddleware
             }
         }
 
-        // 6. ID hala yoksa: REDDET!
-        if (resolvedProjectId == null || resolvedProjectId == Guid.Empty)
+        // Senaryo C: Webhook girişi - QueryString'den (URL'den) oku (YENİ EKLENDİ)
+        if (resolvedProjectId == null && context.Request.Query.TryGetValue("projectId", out var queryValue))
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { Error = "Bu işlem için 'X-Project-Id' header'ı zorunludur." });
-            return;
+            if (Guid.TryParse(queryValue.ToString(), out var queryProjectId))
+            {
+                resolvedProjectId = queryProjectId;
+            }
         }
+        #endregion
 
-        if (resolvedProjectId.HasValue)
+        #region 3. CONTEXT'İ DOLDURMA (Bağlamı Yarat)
+        // Eğer ID bir şekilde bulunduysa, yetki (Auth) durumuna bakmaksızın Context'e yükle.
+        if (resolvedProjectId.HasValue && resolvedProjectId.Value != Guid.Empty)
         {
-            var project = await dbContext.Projects.AsNoTracking().Include(p => p.Settings).FirstOrDefaultAsync(p => p.Id == resolvedProjectId.Value);
+            var project = await dbContext.Projects
+                .AsNoTracking()
+                .Include(p => p.Settings)
+                .FirstOrDefaultAsync(p => p.Id == resolvedProjectId.Value);
+
             if (project != null)
+            {
                 projectContext.SetProject(project);
-
+                projectContext.SetProjectId(resolvedProjectId.Value);
+            }
         }
+        #endregion
 
-        // 7. Her şey okeyse Context'i doldur ve devam et
-        projectContext.SetProjectId(resolvedProjectId.Value);
+        #region 4. DENETİM (ENFORCEMENT) AŞAMASI
+        var endpoint = context.GetEndpoint();
+        if (endpoint != null)
+        {
+            var mustHaveProject = endpoint.Metadata.GetMetadata<MustHaveProjectAttribute>();
+
+            // [MustHaveProject] zorunluluğu var ama biz 2. aşamada bir proje bulamadıysak İŞLEMİ REDDET!
+            // Dikkat: [AllowAnonymous] olsa bile, eğer [MustHaveProject] konulmuşsa acımaz, reddeder.
+            if (mustHaveProject != null && !projectContext.IsIdSet)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { Error = "Bu işlem için geçerli bir Proje (X-Project-Id veya URL Parametresi) zorunludur." });
+                return;
+            }
+        }
+        #endregion
+
+        // 5. Her şey yolunda, isteği Handler/Controller'a aktar
         await _next(context);
     }
 }

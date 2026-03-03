@@ -10,9 +10,11 @@ using SubOrbitV2.Application.Common.Models;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Infrastructure.Data;
 using SubOrbitV2.Infrastructure.Persistence.Repositories;
+using SubOrbitV2.Infrastructure.Services.Billing;
 using SubOrbitV2.Infrastructure.Services.Email;
 using SubOrbitV2.Infrastructure.Services.Files;
 using SubOrbitV2.Infrastructure.Services.Identity;
+using SubOrbitV2.Infrastructure.Services.Integration;
 using SubOrbitV2.Infrastructure.Services.Notification;
 using SubOrbitV2.Infrastructure.Services.Payment.Nexi;
 using SubOrbitV2.Infrastructure.Services.Pdf;
@@ -109,7 +111,7 @@ public static class InfrastructureServiceRegistration
 
         // Bildirim Servisi
         services.AddTransient<INotificationService, NotificationService>();
-
+        services.AddTransient<INotificationDispatcherService, NotificationDispatcherService>();
         #endregion
 
         #region 6. Payment Gateway (Nexi Entegrasyonu)
@@ -144,6 +146,14 @@ public static class InfrastructureServiceRegistration
 
         #endregion
 
+        #region 8. Integration & Webhooks (YENİ)
+        services.AddScoped<IWebhookService, WebhookService>();
+        services.AddHttpClient<IWebhookDispatcherService, WebhookDispatcherService>();
+        #endregion
+
+        #region 9. Hesaplama Araçları
+        services.AddSingleton<IPricingCalculatorService, PricingCalculatorService>();
+        #endregion
         return services;
     }
 }

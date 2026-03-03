@@ -6,5 +6,5 @@ public interface IFileService
 {
     Task<string> UploadFileAsync(IFormFile file, string folderName);
     Task DeleteFileAsync(string filePath);
-    Task<string> SaveFileAsync(byte[] content, string fileName, string folderName);
+    Task<string> SaveFileAsync(byte[] content, string fileName, string folderName,string payerId);
 }

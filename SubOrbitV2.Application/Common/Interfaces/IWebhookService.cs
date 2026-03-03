@@ -21,8 +21,13 @@ public interface IWebhookService
     /// <param name="product">Satın alınan ürün/paket nesnesi.</param>
     /// <param name="validUntil">Erişimin geçerli olduğu son tarih.</param>
     /// <param name="features">Pakete ait limit ve özellikler listesi.</param>
-    Task NotifyAccessGrantedAsync(Guid projectId, Payer payer, Product product, DateTime validUntil, List<ProductFeatureValue> features);
-
+    Task<Guid> NotifyAccessGrantedAsync(Guid projectId, Payer payer, Product product, DateTime validUntil, List<ProductFeatureValue> features);
+    
+    
+    /// <summary>
+    /// Veritabanına başarıyla kaydedilmiş bir Webhook olayını Hangfire kuyruğuna atar.
+    /// </summary>
+    void DispatchBackgroundJob(Guid webhookEventId);
 
     #endregion
 }

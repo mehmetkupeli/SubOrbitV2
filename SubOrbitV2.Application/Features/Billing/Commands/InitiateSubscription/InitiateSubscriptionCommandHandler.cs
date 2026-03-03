@@ -57,11 +57,35 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
             #endregion
 
             #region 2. Payer (Müşteri) Draft/Upsert Kaydı
-            var payerSpec = new PayerByExternalIdSpecification(projectId, request.ExternalId);
+            var payerSpec = new PayerWithSubscriptionsByExternalIdSpecification(projectId, request.ExternalId);
             var payer = await _unitOfWork.Repository<Payer>().GetEntityWithSpec(payerSpec);
 
-            if (payer == null)
+            if (payer != null)
             {
+                // Durum A: Müşterinin zaten aktif bir ana aboneliği varsa ENGELLE
+                var hasActiveMainSubscription = payer.Subscriptions.Any(s => s.IsMain && s.Status == SubscriptionStatus.Active);
+                if (hasActiveMainSubscription)
+                {
+                    return Result<InitiateSubscriptionResponse>.Failure("Bu kullanıcının zaten aktif bir aboneliği bulunmaktadır.");
+                }
+
+                // Durum B: Aktif aboneliği yok (Sepeti terk etmiş, iptal etmiş vs.)
+                payer.Name = request.Name;
+                payer.Email = request.Email;
+                payer.TaxOffice = request.TaxOffice;
+                payer.TaxNumber = request.TaxNumber;
+                payer.BillingAddress = request.BillingAddress;
+                payer.City = request.City;
+                payer.Country = request.Country;
+                payer.AlignmentStrategy = request.AlignmentStrategy;
+                payer.BillingAnchorDay = request.BillingAnchorDay;
+
+                // Kaydı güncelleyip sürece devam ediyoruz
+                _unitOfWork.Repository<Payer>().Update(payer);
+            }
+            else
+            {
+                // Hiç kaydı yoksa sıfırdan taslak (Pending) oluşturuyoruz
                 payer = new Payer
                 {
                     ExternalId = request.ExternalId,
@@ -77,10 +101,6 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
                     BillingAnchorDay = request.BillingAnchorDay,
                 };
                 await _unitOfWork.Repository<Payer>().AddAsync(payer);
-            }
-            else
-            {
-                return Result<InitiateSubscriptionResponse>.Failure("Bu Payer zaten sistemde kayıtlı.");
             }
             #endregion
 

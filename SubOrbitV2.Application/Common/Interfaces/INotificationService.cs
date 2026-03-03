@@ -9,7 +9,18 @@ namespace SubOrbitV2.Application.Common.Interfaces;
 public interface INotificationService
 {
     /// <summary>
-    /// Fatura kesildiğinde müşteriye şablonlu bir e-posta bildirimini kuyruğa atar.
+    /// Yeni abone olan müşteriye "Hoş Geldiniz" mesajı ve ilk faturasını şablonlu bir şekilde hazırlar.
+    /// (Sadece abonelik ilk başladığında kullanılır)
     /// </summary>
-    Task NotifyInvoiceCreatedAsync(Guid projectId, Payer payer, Invoice invoice, Project project, string pdfPath);
+    Task<Guid> NotifyWelcomeAndSubscriptionAsync(Guid projectId, Payer payer, Invoice invoice, Project project, string pdfPath, bool isProrated = false);
+
+    /// <summary>
+    /// Mevcut abonelere aylık yenilemelerde (Recurring) gönderilen standart fatura bildirimini hazırlar.
+    /// </summary>
+    Task<Guid> NotifyStandardInvoiceAsync(Guid projectId, Payer payer, Invoice invoice, Project project, string pdfPath);
+
+    /// <summary>
+    /// Hazırlanıp veritabanına eklenen bildirimi Hangfire kuyruğuna fırlatır.
+    /// </summary>
+    void DispatchBackgroundJob(Guid notificationId);
 }
