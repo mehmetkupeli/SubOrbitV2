@@ -1,6 +1,5 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Mvc;
 using SubOrbitV2.Application.Common.Attributes;
 using SubOrbitV2.Application.Features.Catalog.Commands.CreateCoupon;
