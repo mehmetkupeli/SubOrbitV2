@@ -39,8 +39,10 @@ public class NexiClient : INexiClient
 
         var webhookUrl = $"{_nexiSettings.PublicApiUrl}/nexi?projectId={_projectContextService.ProjectId}&subId={orderItem.SubscriptionReference}";
 
+        bool shouldCharge = orderItem.GrossTotalAmount > 0;
+
         var requestBody = new CreatePaymentRequest(
-            new NexiCheckout("HostedPaymentPage", orderItem.ReturnUrl, !string.IsNullOrEmpty(orderItem.TermsUrl) ? orderItem.TermsUrl : orderItem.ReturnUrl, true, true),
+            new NexiCheckout("HostedPaymentPage", orderItem.ReturnUrl, !string.IsNullOrEmpty(orderItem.TermsUrl) ? orderItem.TermsUrl : orderItem.ReturnUrl, shouldCharge, true),
             new NexiOrder(
                 new[]
                 {

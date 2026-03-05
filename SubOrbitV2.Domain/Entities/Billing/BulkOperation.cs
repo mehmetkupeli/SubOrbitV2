@@ -5,7 +5,7 @@ namespace SubOrbitV2.Domain.Entities.Billing;
 
 /// <summary>
 /// Nexi vb. sağlayıcılara yapılan toplu işlemlerin (Batch) takibi.
-/// Senaryo: Bir Payer'ın 50 aboneliği için tek bir Bulk Request atılır, 
+/// Senaryo: Bir Payer'ın 5000 aboneliği için tek bir Bulk Request atılır, 
 /// dönen BulkId ile işlemin sonucu (Polling) takip edilir.
 /// </summary>
 public class BulkOperation : BaseEntity, IMustHaveProject

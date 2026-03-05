@@ -44,6 +44,16 @@ public class GenericRepository<T> : IGenericRepository<T> where T : BaseEntity
         _context.Set<T>().Update(entity);
     }
 
+    public async Task AddRangeAsync(IEnumerable<T> entities)
+    {
+        await _context.Set<T>().AddRangeAsync(entities);
+    }
+
+    public void UpdateRange(IEnumerable<T> entities)
+    {
+        _context.Set<T>().UpdateRange(entities);
+    }
+
     public void SoftDelete(T entity)
     {
         entity.IsDeleted = true;

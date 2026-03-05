@@ -30,6 +30,16 @@ public interface IGenericRepository<T> where T : BaseEntity
     void Update(T entity);
 
     /// <summary>
+    /// Çoklu kayıt ekler. (Performans için toplu insert)
+    /// </summary>
+    Task AddRangeAsync(IEnumerable<T> entities);
+
+    /// <summary>
+    /// Çoklu kayıt günceller. (Performans için toplu update)
+    /// </summary>
+    void UpdateRange(IEnumerable<T> entities);
+
+    /// <summary>
     /// Kaydı "Silindi" (IsDeleted = true) olarak işaretler.
     /// Veri tabanından fiziksel olarak silinmez.
     /// </summary>
