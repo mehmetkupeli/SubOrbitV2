@@ -96,6 +96,7 @@ public class WebhookService : IWebhookService
 
         // SADECE MEMORY'E EKLİYORUZ (Unit of Work)
         await _unitOfWork.Repository<WebhookEvent>().AddAsync(webhookEvent);
+        await _unitOfWork.SaveChangesAsync();
 
         // İşlemin ID'sini geri dönüyoruz
         return webhookEvent.Id;

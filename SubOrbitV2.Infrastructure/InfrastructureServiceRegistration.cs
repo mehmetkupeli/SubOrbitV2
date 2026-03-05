@@ -10,6 +10,7 @@ using SubOrbitV2.Application.Common.Models;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Infrastructure.Data;
 using SubOrbitV2.Infrastructure.Persistence.Repositories;
+using SubOrbitV2.Infrastructure.Services.BackgroundJobs;
 using SubOrbitV2.Infrastructure.Services.Billing;
 using SubOrbitV2.Infrastructure.Services.Email;
 using SubOrbitV2.Infrastructure.Services.Files;
@@ -125,6 +126,10 @@ public static class InfrastructureServiceRegistration
         #endregion
 
         #region 7. Background Jobs (Hangfire)
+        services.AddTransient<IMasterBillingJob, MasterBillingJob>();
+        services.AddTransient<IProjectBillingWorkerJob, ProjectBillingWorkerJob>();
+        services.AddTransient<INexiBulkDispatcherJob, NexiBulkDispatcherJob>();
+        services.AddTransient<INexiStatusCheckerJob, NexiStatusCheckerJob>();
 
         services.AddHangfire(config => config
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)

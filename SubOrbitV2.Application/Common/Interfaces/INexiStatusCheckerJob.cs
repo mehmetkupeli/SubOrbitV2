@@ -2,5 +2,5 @@
 
 public interface INexiStatusCheckerJob
 {
-    Task CheckBulkStatusAsync(Guid bulkOperationId);
+    Task CheckBulkStatusAsync(Guid projectId, Guid bulkOperationId);
 }

@@ -18,20 +18,28 @@ public class ProcessProjectRecurringBillingCommandHandler : IRequestHandler<Proc
     private readonly ILogger<ProcessProjectRecurringBillingCommandHandler> _logger;
     private readonly IPricingCalculatorService _pricingCalculator;
     private readonly IBackgroundJobClient _backgroundJobClient;
+    private readonly IProjectContext _projectContext;
     public ProcessProjectRecurringBillingCommandHandler(
         IUnitOfWork unitOfWork,
         ILogger<ProcessProjectRecurringBillingCommandHandler> logger,
-        IPricingCalculatorService pricingCalculator, IBackgroundJobClient backgroundJobClient)
+        IPricingCalculatorService pricingCalculator, IBackgroundJobClient backgroundJobClient, IProjectContext projectContext)
     {
         _unitOfWork = unitOfWork;
         _logger = logger;
         _pricingCalculator = pricingCalculator;
         _backgroundJobClient = backgroundJobClient;
+        _projectContext = projectContext;
     }
 
     public async Task<Result<bool>> Handle(ProcessProjectRecurringBillingCommand request, CancellationToken cancellationToken)
     {
-        var today = DateTime.UtcNow.Date;
+        if (!_projectContext.IsIdSet)
+        {
+            _projectContext.SetProjectId(request.ProjectId);
+        }
+
+        //var today = DateTime.UtcNow.Date;
+        var today = new DateTime(2026, 3, 31, 0, 0, 0, DateTimeKind.Utc);
         _logger.LogInformation("Proje {ProjectId} için yenileme motoru başlatıldı.", request.ProjectId);
 
         #region Adım 1: Zeki Veri Çekimi (Payer Odaklı)
@@ -178,26 +186,12 @@ public class ProcessProjectRecurringBillingCommandHandler : IRequestHandler<Proc
             generatedInvoices.Add(invoice);
         }
 
-        #region Adım 4: Veritabanına Toplu Yazım (Bulk Insert/Update)
-
-        if (generatedInvoices.Any())
-        {
-            // EF Core, AddRangeAsync kullanıldığında Invoice içindeki 'Lines' listesini de otomatik insert eder.
-            await _unitOfWork.Repository<Invoice>().AddRangeAsync(generatedInvoices);
-
-            // Aboneliklerin tarihleri ve koparılan kuponları topluca güncelleniyor
-            _unitOfWork.Repository<Subscription>().UpdateRange(updatedSubscriptions);
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-        }
-
-        #endregion
-
-        #region Adım 5: Chunking ve Hangfire Bulk Dispatcher Kayıtları
+        #region Adım 4: Chunking, Fatura Eşleştirme ve Hangfire Job Kurulumu
 
         // Sadece durumu 'Open' olanları Nexi'ye yollayacağız (0 Tutar olanlar zaten Paid oldu)
         var pendingInvoices = generatedInvoices.Where(x => x.Status == InvoiceStatus.Open).ToList();
         int chunkSize = 5000;
+        var bulkOperations = new List<BulkOperation>();
 
         for (int i = 0; i < pendingInvoices.Count; i += chunkSize)
         {
@@ -209,20 +203,49 @@ public class ProcessProjectRecurringBillingCommandHandler : IRequestHandler<Proc
                 Id = Guid.NewGuid(),
                 ProjectId = request.ProjectId,
                 Status = BulkOperationStatus.Pending,
-                ItemCount = chunk.Count, 
+                ItemCount = chunk.Count,
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _unitOfWork.Repository<BulkOperation>().AddAsync(bulkOperation);
+            bulkOperations.Add(bulkOperation);
 
-            var delay = JobHelper.CalculateChunkDispatchDelay(i, chunkSize);
-            _backgroundJobClient.Schedule<INexiBulkDispatcherJob>(job => job.ProcessBulkChargeAsync(bulkOperation.Id),TimeSpan.FromMinutes(delayMinutes));
+            // KRİTİK DÜZELTME: Bu chunk'taki faturalara BulkOperationId'yi SET EDİYORUZ!
+            foreach (var invoiceToUpdate in chunk)
+            {
+                invoiceToUpdate.BulkOperationId = bulkOperation.Id;
+            }
+
+            // 1. TODO ÇÖZÜMÜ: Hangfire Dispatcher Job'ını kuruyoruz (Örn: 0. dk, 5. dk, 10. dk...)
+            var delay = JobHelper.CalculateChunkDispatchDelay(i, chunkSize, 5);
+            _backgroundJobClient.Schedule<INexiBulkDispatcherJob>(
+                job => job.ProcessBulkChargeAsync(request.ProjectId, bulkOperation.Id),
+                delay
+            );
         }
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
         #endregion
 
-        _logger.LogInformation("Yenileme tamamlandı: {InvoiceCount} fatura kesildi, {SubCount} abonelik güncellendi.", generatedInvoices.Count, updatedSubscriptions.Count);
+        #region Adım 5: Veritabanına Tek Seferde Toplu Yazım (Bulk Insert/Update)
+
+        // Tüm atamalar (BulkOperationId dahil) hafızada yapıldı, şimdi tek seferde DB'ye yazıyoruz!
+        if (generatedInvoices.Any())
+        {
+            await _unitOfWork.Repository<Invoice>().AddRangeAsync(generatedInvoices);
+            _unitOfWork.Repository<Subscription>().UpdateRange(updatedSubscriptions);
+
+            if (bulkOperations.Any())
+            {
+                await _unitOfWork.Repository<BulkOperation>().AddRangeAsync(bulkOperations);
+            }
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        #endregion
+
+        _logger.LogInformation("Yenileme tamamlandı: {InvoiceCount} fatura kesildi, {SubCount} abonelik güncellendi. {BulkCount} adet Bulk işlem kuyruğa alındı.",
+            generatedInvoices.Count, updatedSubscriptions.Count, bulkOperations.Count);
+
         return Result<bool>.Success(true);
     }
 }

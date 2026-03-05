@@ -132,6 +132,7 @@ public class NotificationService : INotificationService
         };
 
         await _unitOfWork.Repository<NotificationQueue>().AddAsync(notification);
+        await _unitOfWork.SaveChangesAsync();
         return notification.Id;
     }
     #endregion

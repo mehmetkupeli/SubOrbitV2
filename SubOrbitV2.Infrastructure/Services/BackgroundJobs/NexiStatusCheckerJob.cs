@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging;
 using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
+using SubOrbitV2.Domain.Entities.Organization;
 using SubOrbitV2.Domain.Enums;
 using SubOrbitV2.Domain.Specifications.Billing;
+using SubOrbitV2.Domain.Specifications.Organization;
 
 namespace SubOrbitV2.Infrastructure.Services.BackgroundJobs;
 
@@ -14,23 +16,36 @@ public class NexiStatusCheckerJob : INexiStatusCheckerJob
     private readonly INexiClient _nexiClient;
     private readonly ILogger<NexiStatusCheckerJob> _logger;
     private readonly IBackgroundJobClient _backgroundJobClient;
-
+    private readonly IProjectContext _projectContext;
     public NexiStatusCheckerJob(
         IUnitOfWork unitOfWork,
         INexiClient nexiClient,
         ILogger<NexiStatusCheckerJob> logger,
-        IBackgroundJobClient backgroundJobClient)
+        IBackgroundJobClient backgroundJobClient,
+        IProjectContext projectContext)
     {
         _unitOfWork = unitOfWork;
         _nexiClient = nexiClient;
         _logger = logger;
         _backgroundJobClient = backgroundJobClient;
+        _projectContext = projectContext;
     }
 
-    public async Task CheckBulkStatusAsync(Guid bulkOperationId)
+    public async Task CheckBulkStatusAsync(Guid projectId,Guid bulkOperationId)
     {
         _logger.LogInformation("Mutabakat Bekçisi uyandı. BulkOperationId: {BulkId}", bulkOperationId);
+        
+        #region 1. HAYATİ ADIM: PROJECT CONTEXT'İ DOLDUR (HYDRATE)
+        // Hem Global Query Filter hem de NexiClient için bağlamı oluşturuyoruz
+        _projectContext.SetProjectId(projectId);
 
+        var projectSpec = new ProjectWithSettingsByIdSpecification(projectId);
+        var project = await _unitOfWork.Repository<Project>().GetEntityWithSpec(projectSpec);
+
+        if (project == null) return;
+        _projectContext.SetProject(project); // NexiClient artık API Key'i okuyabilecek!
+        
+        #endregion
         // 1. Bulk Operation Kaydını Getir
         var bulkOp = await _unitOfWork.Repository<BulkOperation>().GetByIdAsync(bulkOperationId);
         if (bulkOp == null || string.IsNullOrEmpty(bulkOp.ExternalBulkId)) return;
@@ -58,7 +73,7 @@ public class NexiStatusCheckerJob : INexiStatusCheckerJob
             if (response == null)
             {
                 _logger.LogWarning("Nexi'den durum alınamadı. BulkId: {BulkId}. Daha sonra tekrar denenecek.", bulkOperationId);
-                RescheduleJob(bulkOp);
+                RescheduleJob(bulkOp, projectId);
                 return;
             }
 
@@ -103,7 +118,7 @@ public class NexiStatusCheckerJob : INexiStatusCheckerJob
 
         if (isStillProcessing)
         {
-            RescheduleJob(bulkOp);
+            RescheduleJob(bulkOp, projectId);
             return;
         }
 
@@ -119,7 +134,7 @@ public class NexiStatusCheckerJob : INexiStatusCheckerJob
     /// <summary>
     /// Eğer işlem bitmediyse veya Nexi yanıt vermediyse, job'ı maksimum 24 kez (24 saat) olmak üzere tekrar kurar.
     /// </summary>
-    private void RescheduleJob(BulkOperation bulkOp)
+    private void RescheduleJob(BulkOperation bulkOp,Guid projectId)
     {
         if (bulkOp.CheckCount < 24)
         {
@@ -130,7 +145,7 @@ public class NexiStatusCheckerJob : INexiStatusCheckerJob
             _unitOfWork.SaveChangesAsync(default).Wait();
 
             _backgroundJobClient.Schedule<INexiStatusCheckerJob>(
-                x => x.CheckBulkStatusAsync(bulkOp.Id),
+                x => x.CheckBulkStatusAsync(projectId,bulkOp.Id),
                 TimeSpan.FromHours(1)
             );
         }

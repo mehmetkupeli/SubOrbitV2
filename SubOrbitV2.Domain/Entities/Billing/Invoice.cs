@@ -120,6 +120,7 @@ public class Invoice : BaseEntity, IMustHaveProject
     /// Nexi veya ödeme sağlayıcıdan dönen işlem ID'si.
     /// </summary>
     public string? NexiTransactionId { get; set; }
+   
     public Guid? BulkOperationId { get; set; }
 
     /// <summary>

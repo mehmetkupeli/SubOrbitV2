@@ -3,6 +3,7 @@ using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Application.Common.Models;
 using SubOrbitV2.Application.Common.Models.Billing;
 using SubOrbitV2.Application.Common.Models.Payment;
+using SubOrbitV2.Application.Common.Utils;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
 using SubOrbitV2.Domain.Entities.Catalog;
@@ -107,7 +108,7 @@ public class AddSubscriptionCommandHandler : IRequestHandler<AddSubscriptionComm
 
         var subscriptionId = Guid.NewGuid();
         var invoiceId = Guid.NewGuid();
-        var invoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString().Substring(0, 6).ToUpper()}";
+        var invoiceNumber = InvoiceHelper.GenerateInvoiceNumber();
 
         var subscription = new Subscription
         {

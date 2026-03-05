@@ -5,5 +5,5 @@ public interface INexiBulkDispatcherJob
     /// <summary>
     /// Belirtilen BulkOperationId altındaki tüm faturaları toplayıp Nexi'ye fırlatır.
     /// </summary>
-    Task ProcessBulkChargeAsync(Guid bulkOperationId);
+    Task ProcessBulkChargeAsync(Guid projectId, Guid bulkOperationId);
 }

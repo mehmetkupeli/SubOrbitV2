@@ -1,9 +1,10 @@
 using Hangfire;
+using Microsoft.OpenApi.Models;
 using SubOrbitV2.Api.Middleware;
 using SubOrbitV2.Application;
+using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Infrastructure;
 using SubOrbitV2.Infrastructure.Services.BackgroundJobs;
-using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -137,9 +138,12 @@ app.MapControllers();
 // -----------------------------------------------------------------------------
 // Uygulamanýn ayaða kalktýðý son nokta.
 // -----------------------------------------------------------------------------
-
-// Loglama: Uygulama baþladý
-// Log.Information("SubOrbit V2 API Starting Up...");
+RecurringJob.AddOrUpdate<IMasterBillingJob>(
+    "master-recurring-billing-job",
+    job => job.TriggerAllProjectsAsync(),
+    Cron.Daily(0, 0), 
+    new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc } // UTC saatine göre 00:00
+);
 
 app.Run();
 

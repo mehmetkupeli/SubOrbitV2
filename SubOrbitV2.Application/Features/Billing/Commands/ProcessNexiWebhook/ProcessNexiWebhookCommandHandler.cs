@@ -18,13 +18,15 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
     private readonly IPdfService _pdfService;
     private readonly IFileService _fileService;
     private readonly INotificationService _notificationService;
-    public ProcessNexiWebhookCommandHandler(IUnitOfWork unitOfWork, IWebhookService webhookService, IPdfService pdfService, IFileService fileService, INotificationService notificationService)
+    private readonly INexiClient _nexiClient;
+    public ProcessNexiWebhookCommandHandler(IUnitOfWork unitOfWork, IWebhookService webhookService, IPdfService pdfService, IFileService fileService, INotificationService notificationService, INexiClient nexiClient)
     {
         _unitOfWork = unitOfWork;
         _webhookService = webhookService;
         _pdfService = pdfService;
         _fileService = fileService;
         _notificationService = notificationService;
+        _nexiClient = nexiClient;
     }
 
     public async Task<Result<bool>> Handle(ProcessNexiWebhookCommand request, CancellationToken cancellationToken)
@@ -72,12 +74,22 @@ public class ProcessNexiWebhookCommandHandler : IRequestHandler<ProcessNexiWebho
         {
             #region 5. BÜYÜK PATLAMA (Unit of Work İşlemleri)
 
+            // Nexi Bilgilerinden SubId çekme
+            var paymentDetails = await _nexiClient.GetPaymentDetailsAsync(request.PaymentId);
+
+            if (paymentDetails?.Payment == null)
+                throw new Exception($"Nexi-betalingsdetaljer kunne ikke hentes. PaymentId: {request.PaymentId}");
+
+            var netsSubscriptionId = paymentDetails.Payment.Subscription?.Id;
+
             // İşlem 1: Abonelik Aktifleştirme
             subscription.Status = SubscriptionStatus.Active;
             _unitOfWork.Repository<Subscription>().Update(subscription);
 
             // İşlem 2: Müşteri (Payer) Aktifleştirme
             payer.Status = PayerStatus.Active;
+            payer.NexiCustomerId = netsSubscriptionId;
+
             _unitOfWork.Repository<Payer>().Update(payer);
 
             // İşlem 3: Mevcut Taslak Faturayı (Invoice) Tahsil Edildi Olarak İşaretleme

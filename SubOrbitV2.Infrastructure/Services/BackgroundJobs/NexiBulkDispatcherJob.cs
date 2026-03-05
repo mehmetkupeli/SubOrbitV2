@@ -5,8 +5,10 @@ using SubOrbitV2.Application.Common.Models.Payment;
 using SubOrbitV2.Application.Common.Utils;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
+using SubOrbitV2.Domain.Entities.Organization;
 using SubOrbitV2.Domain.Enums;
 using SubOrbitV2.Domain.Specifications.Billing;
+using SubOrbitV2.Domain.Specifications.Organization;
 
 namespace SubOrbitV2.Infrastructure.Services.BackgroundJobs;
 
@@ -16,17 +18,30 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
     private readonly INexiClient _nexiClient;
     private readonly ILogger<NexiBulkDispatcherJob> _logger;
     private readonly IBackgroundJobClient _backgroundJobClient;
-    public NexiBulkDispatcherJob(IUnitOfWork unitOfWork, INexiClient nexiClient, ILogger<NexiBulkDispatcherJob> logger,IBackgroundJobClient backgroundJobClient)
+    private readonly IProjectContext _projectContext;
+    public NexiBulkDispatcherJob(IUnitOfWork unitOfWork, INexiClient nexiClient, ILogger<NexiBulkDispatcherJob> logger,IBackgroundJobClient backgroundJobClient, IProjectContext projectContext)
     {
         _unitOfWork = unitOfWork;
         _nexiClient = nexiClient;
         _logger = logger;
         _backgroundJobClient = backgroundJobClient;
+        _projectContext = projectContext;
     }
 
-    public async Task ProcessBulkChargeAsync(Guid bulkOperationId)
+    public async Task ProcessBulkChargeAsync(Guid projectId, Guid bulkOperationId)
     {
         _logger.LogInformation("Bulk Operation {BulkId} Dispatcher tarafından başlatıldı.", bulkOperationId);
+
+        #region 1. HAYATİ ADIM: PROJECT CONTEXT'İ DOLDUR (HYDRATE)
+        // Hem Global Query Filter hem de NexiClient için bağlamı oluşturuyoruz
+        _projectContext.SetProjectId(projectId);
+
+        var projectSpec = new ProjectWithSettingsByIdSpecification(projectId);
+        var project = await _unitOfWork.Repository<Project>().GetEntityWithSpec(projectSpec);
+
+        if (project == null) return;
+        _projectContext.SetProject(project); 
+        #endregion
 
         // 1. BulkOperation'ı Getir
         var bulkOp = await _unitOfWork.Repository<BulkOperation>().GetByIdAsync(bulkOperationId);
@@ -110,7 +125,7 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
         // 5. İŞLEM BAŞARILIYSA DURUM KONTROLÜ (PULL) JOB'UNU KUR
         if (bulkOp.Status == BulkOperationStatus.Processing)
         {
-            _backgroundJobClient.Schedule<INexiStatusCheckerJob>(job => job.CheckBulkStatusAsync(bulkOp.Id),delay);
+            _backgroundJobClient.Schedule<INexiStatusCheckerJob>(job => job.CheckBulkStatusAsync(projectId,bulkOp.Id),delay);
         }
     }
 }

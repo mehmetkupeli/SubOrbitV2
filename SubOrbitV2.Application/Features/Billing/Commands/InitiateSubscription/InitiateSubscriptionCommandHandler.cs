@@ -3,6 +3,7 @@ using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Application.Common.Models;
 using SubOrbitV2.Application.Common.Models.Billing;
 using SubOrbitV2.Application.Common.Models.Payment;
+using SubOrbitV2.Application.Common.Utils;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
 using SubOrbitV2.Domain.Entities.Catalog;
@@ -152,9 +153,7 @@ public class InitiateSubscriptionCommandHandler : IRequestHandler<InitiateSubscr
             #endregion
 
             #region 6. Fatura (Invoice) ve Satır (InvoiceLine) Draft Kaydı
-            // Benzersiz bir fatura numarası üretiyoruz (Örn: INV-20260226-ABCDEF)
-            var invoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString().Substring(0, 6).ToUpper()}";
-
+            var invoiceNumber = InvoiceHelper.GenerateInvoiceNumber();
             var invoice = new Invoice
             {
                 ProjectId = projectId,
