@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Application.Common.Models;
 using SubOrbitV2.Application.Common.Models.Billing;
+using SubOrbitV2.Application.Common.Utils;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
 using SubOrbitV2.Domain.Enums;
@@ -64,7 +65,7 @@ public class ProcessProjectRecurringBillingCommandHandler : IRequestHandler<Proc
                 Id = Guid.NewGuid(),
                 ProjectId = request.ProjectId,
                 PayerId = payer.Id,
-                Number = $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString().Substring(0, 6).ToUpper()}",
+                Number = InvoiceHelper.GenerateInvoiceNumber(),
                 BillingReason = InvoiceBillingReason.SubscriptionCycle,
                 CustomerName = payer.Name,
                 CustomerEmail = payer.Email,
@@ -214,7 +215,7 @@ public class ProcessProjectRecurringBillingCommandHandler : IRequestHandler<Proc
 
             await _unitOfWork.Repository<BulkOperation>().AddAsync(bulkOperation);
 
-            int delayMinutes = (i / chunkSize) * 5;
+            var delay = JobHelper.CalculateChunkDispatchDelay(i, chunkSize);
             _backgroundJobClient.Schedule<INexiBulkDispatcherJob>(job => job.ProcessBulkChargeAsync(bulkOperation.Id),TimeSpan.FromMinutes(delayMinutes));
         }
 

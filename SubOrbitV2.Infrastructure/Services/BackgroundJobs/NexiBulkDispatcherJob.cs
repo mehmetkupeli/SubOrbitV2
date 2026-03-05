@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using SubOrbitV2.Application.Common.Interfaces;
 using SubOrbitV2.Application.Common.Models.Payment;
+using SubOrbitV2.Application.Common.Utils;
 using SubOrbitV2.Domain.Abstractions;
 using SubOrbitV2.Domain.Entities.Billing;
 using SubOrbitV2.Domain.Enums;
@@ -84,11 +85,9 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
                 bulkOp.ExternalBulkId = externalBulkId;
                 bulkOp.Status = BulkOperationStatus.Processing;
                 bulkOp.CheckCount = 0;
-
-                int delayMinutes = Math.Max(5, (int)Math.Ceiling(bulkOp.ItemCount / 100.0));
-                delayMinutes = Math.Min(delayMinutes, 60);
-                bulkOp.NextCheckTime = DateTime.UtcNow.AddMinutes(delayMinutes);
-
+                var delay = JobHelper.CalculateStatusCheckDelay(bulkOp.ItemCount);
+                bulkOp.NextCheckTime = DateTime.UtcNow.Add(delay);
+                
                 _logger.LogInformation("Bulk Operation {BulkId} Nexi'ye iletildi. ExternalId: {ExtId}", bulkOperationId, externalBulkId);
             }
             else
@@ -110,11 +109,8 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
         // 5. İŞLEM BAŞARILIYSA DURUM KONTROLÜ (PULL) JOB'UNU KUR
         if (bulkOp.Status == BulkOperationStatus.Processing)
         {
-            // İşlem başarılıysa Mutabakat Bekçisini (Status Checker) 1 saat sonraya kuruyoruz
-            _backgroundJobClient.Schedule<INexiStatusCheckerJob>(
-                job => job.CheckBulkStatusAsync(bulkOp.Id),
-                TimeSpan.FromHours(1)
-            );
+            var delay = JobHelper.CalculateStatusCheckDelay(bulkOp.ItemCount);
+            _backgroundJobClient.Schedule<INexiStatusCheckerJob>(job => job.CheckBulkStatusAsync(bulkOp.Id),delay);
         }
     }
 }
