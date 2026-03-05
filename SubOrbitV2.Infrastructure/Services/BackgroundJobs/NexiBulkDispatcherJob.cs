@@ -76,6 +76,7 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
         }
 
         // 4. Nexi API'sine Vur (Toplu Gönderim)
+        var delay = JobHelper.CalculateStatusCheckDelay(bulkOp.ItemCount);
         try
         {
             var externalBulkId = await _nexiClient.BulkChargeSubscriptionsAsync(bulkItems, bulkOp.ProjectId);
@@ -85,7 +86,7 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
                 bulkOp.ExternalBulkId = externalBulkId;
                 bulkOp.Status = BulkOperationStatus.Processing;
                 bulkOp.CheckCount = 0;
-                var delay = JobHelper.CalculateStatusCheckDelay(bulkOp.ItemCount);
+                
                 bulkOp.NextCheckTime = DateTime.UtcNow.Add(delay);
                 
                 _logger.LogInformation("Bulk Operation {BulkId} Nexi'ye iletildi. ExternalId: {ExtId}", bulkOperationId, externalBulkId);
@@ -109,7 +110,6 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
         // 5. İŞLEM BAŞARILIYSA DURUM KONTROLÜ (PULL) JOB'UNU KUR
         if (bulkOp.Status == BulkOperationStatus.Processing)
         {
-            var delay = JobHelper.CalculateStatusCheckDelay(bulkOp.ItemCount);
             _backgroundJobClient.Schedule<INexiStatusCheckerJob>(job => job.CheckBulkStatusAsync(bulkOp.Id),delay);
         }
     }
