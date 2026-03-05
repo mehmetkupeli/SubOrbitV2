@@ -84,7 +84,10 @@ public class NexiBulkDispatcherJob : INexiBulkDispatcherJob
                 bulkOp.ExternalBulkId = externalBulkId;
                 bulkOp.Status = BulkOperationStatus.Processing;
                 bulkOp.CheckCount = 0;
-                bulkOp.NextCheckTime = DateTime.UtcNow.AddHours(1);
+
+                int delayMinutes = Math.Max(5, (int)Math.Ceiling(bulkOp.ItemCount / 100.0));
+                delayMinutes = Math.Min(delayMinutes, 60);
+                bulkOp.NextCheckTime = DateTime.UtcNow.AddMinutes(delayMinutes);
 
                 _logger.LogInformation("Bulk Operation {BulkId} Nexi'ye iletildi. ExternalId: {ExtId}", bulkOperationId, externalBulkId);
             }
